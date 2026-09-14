@@ -1,0 +1,35 @@
+{
+  "name": "lockdown-blocker",
+  "version": "1.0.0",
+  "description": "A Cold Turkey-style website & app blocker with a lock timer",
+  "main": "main.js",
+  "author": "Jimmy",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "ps-list": "^8.1.1",
+    "node-schedule": "^2.1.1"
+  },
+  "build": {
+    "appId": "com.jimmy.lockdownblocker",
+    "productName": "Lockdown Blocker",
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*"
+    ]
+  }
+}

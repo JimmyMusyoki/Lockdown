@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Speed monitor</title>
+  <link rel="stylesheet" href="speed.css" />
+</head>
+<body>
+  <div class="speed-window">
+    <div class="speed-header"><span><i></i> CONNECTION MONITOR</span><button id="close-window" aria-label="Close speed monitor">×</button></div>
+    <div class="gauge"><strong id="speed-value">--</strong><span>Mbps</span></div>
+    <div class="speed-meta"><span>Latency <b id="latency-value">-- ms</b></span><span id="speed-state">Ready</span></div>
+    <button id="run-test">Run speed test <b>→</b></button>
+  </div>
+  <script src="speed.js"></script>
+</body>
+</html>

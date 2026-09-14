@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Lockdown Blocker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <div>
+          <strong>Lockdown</strong>
+          <span>Focus protection</span>
+        </div>
+      </div>
+
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-item active" href="#overview"><span class="nav-icon">◈</span>Overview</a>
+        <a class="nav-item" href="#websites"><span class="nav-icon">◎</span>Websites</a>
+        <a class="nav-item" href="#apps"><span class="nav-icon">▦</span>Applications</a>
+        <a class="nav-item" href="#network"><span class="nav-icon">⌁</span>Network scope</a>
+        <a class="nav-item" href="#speed-view"><span class="nav-icon">◔</span>Speed test</a>
+      </nav>
+
+      <div class="sidebar-note">
+        <span class="eyebrow">Protection mode</span>
+        <strong>Local device</strong>
+        <span>Blocking is active on this Windows computer.</span>
+      </div>
+    </aside>
+
+    <div class="content-shell">
+      <header class="topbar" id="overview">
+        <div>
+          <span class="eyebrow">Your focus space</span>
+          <h1>Stay in control of your attention.</h1>
+          <p class="subtitle">Keep distracting sites and applications out of reach while you work.</p>
+        </div>
+        <div class="header-status"><span class="status-dot"></span><span>Protection online</span></div>
+      </header>
+
+      <div id="lock-banner" class="lock-banner hidden"></div>
+
+      <main>
+        <section class="summary-grid" aria-label="Blocking summary">
+          <div class="summary-card accent-blue"><span class="summary-label">Websites blocked</span><strong id="sites-count">0</strong><span>on this device</span></div>
+          <div class="summary-card accent-orange"><span class="summary-label">Apps blocked</span><strong id="apps-count">0</strong><span>on this device</span></div>
+          <div class="summary-card accent-green"><span class="summary-label">Protection</span><strong id="protection-state">Ready</strong><span id="protection-detail">No active lock</span></div>
+        </section>
+
+        <div class="section-heading" id="websites">
+          <div><span class="eyebrow">Block list</span><h2>Websites</h2></div>
+          <span class="scope-tag">This device</span>
+        </div>
+        <section class="panel list-panel">
+          <div class="panel-heading"><div class="panel-icon blue">◎</div><div><h3>Distracting websites</h3><p>One domain per line. Subdomains are covered automatically.</p></div></div>
+          <textarea id="sites-input" rows="7" placeholder="youtube.com&#10;facebook.com&#10;reddit.com" aria-label="Blocked websites"></textarea>
+          <div class="panel-footer"><span class="field-note">Changes apply immediately after saving.</span><button id="save-sites"><span>Save list</span><span class="button-arrow">→</span></button></div>
+        </section>
+
+        <div class="section-heading" id="apps">
+          <div><span class="eyebrow">Block list</span><h2>Applications</h2></div>
+          <span class="scope-tag">This device</span>
+        </div>
+        <section class="panel list-panel">
+          <div class="panel-heading"><div class="panel-icon orange">▦</div><div><h3>Distracting applications</h3><p>Use the process name, such as <code>steam.exe</code>.</p></div></div>
+          <textarea id="apps-input" rows="7" placeholder="steam.exe&#10;discord.exe&#10;spotify.exe" aria-label="Blocked applications"></textarea>
+          <div class="panel-footer"><span class="field-note">Running matches will be closed automatically.</span><button id="save-apps"><span>Save list</span><span class="button-arrow">→</span></button></div>
+        </section>
+
+        <div class="section-heading" id="network">
+          <div><span class="eyebrow">Protection schedule</span><h2>Lock timer</h2></div>
+        </div>
+        <section class="panel timer-panel">
+          <div class="timer-copy"><div class="panel-icon green">◷</div><div><h3>Commit to a focused session</h3><p>Blocking stays active until the timer ends. Your lists remain editable.</p></div></div>
+          <div class="timer-form">
+            <label>Duration (minutes)<input id="lock-minutes" type="number" value="60" min="1" /></label>
+            <label>Optional password<input id="lock-password" type="password" placeholder="Not required" /></label>
+            <button id="start-lock" class="primary-action"><span>Start focus session</span><span class="button-arrow">→</span></button>
+          </div>
+          <p id="lock-status" class="lock-status"></p>
+        </section>
+
+        <div class="section-heading">
+          <div><span class="eyebrow">Local network</span><h2>Devices & groups</h2></div>
+          <span id="device-count" class="scope-tag">0 devices found</span>
+        </div>
+        <section class="panel devices-panel">
+          <div class="devices-toolbar">
+            <div><h3>Choose computers to control</h3><p>Devices are discovered from your Windows network table. The agent must be installed on a device before commands can reach it.</p></div>
+            <button id="scan-network" class="connect-button"><span>Scan network</span><span class="button-arrow">↻</span></button>
+          </div>
+          <div id="device-list" class="device-list"><div class="empty-devices">Scan your network to find computers.</div></div>
+          <div class="group-toolbar">
+            <label>Group name<input id="group-name" type="text" placeholder="Study computers" maxlength="50" /></label>
+            <button id="save-group">Save selected as group</button>
+            <select id="group-select" aria-label="Saved device group"><option value="">Choose a saved group</option></select>
+            <button id="load-group" class="secondary-button">Select group</button>
+          </div>
+          <div class="group-actions"><button id="group-sites">Send website list to group</button><button id="group-apps">Send app list to group</button><button id="group-lock">Lock group</button><span id="group-status"></span></div>
+        </section>
+
+        <section class="speed-panel">
+          <div class="network-icon">⌁</div>
+          <div class="speed-copy"><span class="eyebrow">Connection check</span><h3>Internet speed</h3><p>Measure this computer's current connection. This is separate from LAN device discovery.</p></div>
+          <div class="speed-results"><div><strong id="speed-download">--</strong><span>Mbps download</span></div><div><strong id="speed-latency">--</strong><span>ms latency</span></div></div>
+          <button id="speed-test" class="connect-button"><span>Run speed test</span><span class="button-arrow">→</span></button>
+        </section>
+
+        <section class="speed-view" id="speed-view">
+          <div class="section-heading speed-heading"><div><span class="eyebrow">Connection telemetry / instrument cluster</span><h2>Internet speed test</h2></div><span id="speed-live-state" class="scope-tag">CONNECTED</span></div>
+          <div class="speed-cluster">
+            <div class="speedometer">
+              <div class="dial-glow"></div><div class="dial-ticks" id="dial-ticks"></div>
+              <div class="dial-arc"></div><div id="governor-pointer" class="governor-pointer"><span></span></div><div class="pointer-hub"></div>
+              <div class="dial-label dial-0">0</div><div class="dial-label dial-100">100</div><div class="dial-label dial-200">200</div><div class="dial-label dial-300">300</div><div class="dial-label dial-400">400</div><div class="dial-label dial-500">500</div><div class="dial-label dial-600">600</div><div class="dial-label dial-700">700</div><div class="dial-label dial-800">800</div><div class="dial-label dial-900">900</div><div class="dial-label dial-1000">1000</div>
+              <div class="dial-center"><span id="governor-phase">READY</span><strong id="governor-value">0</strong><small>Mbps</small></div>
+            </div>
+            <div class="cluster-side">
+              <div class="cluster-state"><span class="status-dot"></span><span id="governor-title">Ready to test your connection</span><small id="governor-message">Precision connection telemetry</small></div>
+              <div class="cluster-stats"><div><span>DOWNLOAD</span><strong id="governor-download">-- Mbps</strong></div><div><span>UPLOAD</span><strong id="governor-upload">-- Mbps</strong></div><div><span>PING</span><strong id="governor-latency">-- ms</strong></div><div><span>JITTER</span><strong id="governor-jitter">4 ms</strong></div><div><span>PACKET LOSS</span><strong id="governor-loss">0.2%</strong></div><div><span>SERVER</span><strong>Nairobi</strong></div></div>
+              <div class="test-progress"><span id="progress-label">READY TO TEST</span><div><i id="progress-bar"></i></div></div>
+              <button id="governor-test" class="primary-action speed-start"><span>START SPEED TEST</span><span class="button-arrow">→</span></button>
+              <small id="governor-time" class="last-checked">No test run yet</small>
+            </div>
+          </div>
+          <div class="network-summary"><div class="summary-title"><span class="eyebrow">Network information</span><strong>MOHI-LAB</strong></div><div><span>PUBLIC IP</span><strong>Detecting...</strong></div><div><span>ISP</span><strong>Starlink</strong></div><div><span>SERVER</span><strong>Nairobi, Kenya</strong></div><div><span>CONNECTION</span><strong class="connected-text"><i></i>Connected</strong></div></div>
+        </section>
+
+        <section class="network-info">
+          <div class="network-icon">⌁</div>
+          <div class="network-copy"><span class="eyebrow">Network controller</span><h3>Control another computer</h3><p>Install this same app on the other computer, keep its agent enabled, then enter its local IP address and password here.</p></div>
+          <div class="remote-controls">
+            <label class="remote-label">Device address<input id="remote-host" type="text" placeholder="192.168.1.24:47821" aria-label="Remote computer address" /></label>
+            <label class="remote-label">Agent password<input id="remote-password" type="password" placeholder="Enter password" aria-label="Remote agent password" /></label>
+            <div class="remote-actions"><button id="remote-connect" class="connect-button">Test connection</button><span id="remote-status" class="remote-status">Not connected</span></div>
+            <div class="remote-actions command-actions"><button id="remote-sites">Send website list</button><button id="remote-apps">Send app list</button><button id="remote-lock">Lock remote</button></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>
