@@ -138,7 +138,16 @@ async function discoverNetwork() {
       type: inferDeviceType(name, isLocal)
     };
   }));
-  return devices.sort((a, b) => Number(b.online) - Number(a.online) || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+  const uniqueDevices = [];
+  let localAdded = false;
+  for (const device of devices) {
+    if (device.local) {
+      if (localAdded) continue;
+      localAdded = true;
+    }
+    uniqueDevices.push(device);
+  }
+  return uniqueDevices.sort((a, b) => Number(b.online) - Number(a.online) || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
 }
 
 module.exports = { discoverNetwork };

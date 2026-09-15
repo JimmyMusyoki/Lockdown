@@ -174,6 +174,7 @@ async function openDeviceDetails(ip) {
   if (!selectedDevice) return;
   detailName.textContent = selectedDevice.name || `Device ${selectedDevice.ip}`;
   detailAddress.textContent = `${selectedDevice.ip} · ${selectedDevice.mac || 'MAC unavailable'}`;
+  detailShutdownBtn.disabled = Boolean(selectedDevice.local);
   deviceDetail.classList.remove('hidden');
   await refreshDeviceDetails();
   deviceDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -481,6 +482,10 @@ async function sendGroup(command, payload, message) {
 }
 async function sendSingleDevice(command, payload, message) {
   const isAdmin = command === 'shutdown';
+  if (isAdmin && selectedDevice?.local) {
+    showToast('This computer cannot be shut down remotely.');
+    return;
+  }
   const password = agentSessionPassword();
   if (!selectedDevice || !password) {
     showToast('Select a device and enter the agent password first');
