@@ -93,10 +93,10 @@ async function checkForUpdates() {
 
 function configureAutoUpdates() {
   if (!app.isPackaged) return;
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-available', (info) => {
-    sendUpdateStatus('available', { availableVersion: info.version, downloaded: false, progress: 0, message: 'A new version is available.' });
+    sendUpdateStatus('downloading', { availableVersion: info.version, downloaded: false, progress: 0, message: 'Downloading update automatically...' });
   });
   autoUpdater.on('update-not-available', () => {
     sendUpdateStatus('current', { availableVersion: null, downloaded: false, progress: 0, message: 'You are using the latest version.' });
@@ -105,7 +105,11 @@ function configureAutoUpdates() {
     sendUpdateStatus('downloading', { progress: Math.round(progress.percent), message: 'Downloading update...' });
   });
   autoUpdater.on('update-downloaded', (info) => {
-    sendUpdateStatus('downloaded', { availableVersion: info.version, downloaded: true, progress: 100, message: 'Update ready to install.' });
+    sendUpdateStatus('installing', { availableVersion: info.version, downloaded: true, progress: 100, message: 'Installing update and restarting...' });
+    if (automaticUpdates) {
+      isQuitting = true;
+      setTimeout(() => autoUpdater.quitAndInstall(true, true), 1000);
+    }
   });
   autoUpdater.on('error', (error) => {
     sendUpdateStatus('error', { message: error.message });

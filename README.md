@@ -70,15 +70,15 @@ Lockdown Blocker uses `electron-updater` with GitHub Releases for production upd
 
 ### How clients update
 
-Packaged clients check GitHub Releases at startup and every six hours. When a newer release is found, the Overview update panel lets the user download it and then restart to install it. The downloaded installer is verified by `electron-updater` before installation; no arbitrary URL or local path is executed.
+Packaged clients check GitHub Releases at startup and every six hours. Automatic updates are enabled by default: when a newer release is found, the verified update downloads and installs silently, then the application restarts. The Overview update panel shows the version and progress. No arbitrary URL or local path is executed.
 
-Automatic update checks can be turned off in the Overview update panel. A manual **Check for updates** remains available. The current version, last check time, status, download progress, and installation action are shown there.
+Automatic update checks can be turned off in the Overview update panel, although that means the client will not automatically receive releases until checks are enabled again. A manual **Check for updates** remains available. The current version, last check time, status, download progress, and installation action are shown there.
 
 ### Safe testing and failures
 
 Use a new higher version for testing, publish it as a test GitHub Release, and install the previous packaged version on a separate test machine. Never test updates by replacing files inside an installed application. If the check, download, signature, or installation fails, the existing installation stays in place and the update panel reports the error; retry after correcting the release assets or network access.
 
-For production security, publish signed Windows installers by supplying your code-signing certificate through `electron-builder`'s supported environment variables. Do not disable Windows security features or point the updater at an untrusted server.
+For production security, publish signed Windows installers by supplying your code-signing certificate through `electron-builder`'s supported environment variables. Because Lockdown Blocker requests administrator rights to edit the hosts file and control processes, Windows policy or UAC can still require an authorized administrator context; software cannot safely bypass that security boundary. Do not disable Windows security features or point the updater at an untrusted server.
 
 ## Project structure
 ```
