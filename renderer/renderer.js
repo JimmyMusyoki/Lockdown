@@ -41,6 +41,7 @@ const groupLockBtn = document.getElementById('group-lock');
 const groupStatus = document.getElementById('group-status');
 const savedPcCount = document.getElementById('saved-pc-count');
 const savedPcCards = document.getElementById('saved-pc-cards');
+const selectAllSaved = document.getElementById('select-all-saved');
 const bulkTask = document.getElementById('bulk-task');
 const runBulkTaskBtn = document.getElementById('run-bulk-task');
 const deviceDetail = document.getElementById('device-detail');
@@ -76,6 +77,9 @@ let speedRefreshTimer;
 let discoveredDevices = [];
 let networkGroups = [];
 let activeTab = 'overview';
+let agentSessionExpiresAt = 0;
+let savedNetworkRefreshRunning = false;
+let selectedSavedKeys = new Set();
 
 for (let index = 0; index <= 50; index += 1) {
   const tick = document.createElement('i');
@@ -90,6 +94,20 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 2600);
 }
 
+function agentSessionPassword(promptForPassword = true) {
+  if (Date.now() >= agentSessionExpiresAt) {
+    agentSessionExpiresAt = 0;
+    remotePasswordInput.value = '';
+  }
+  if (!remotePasswordInput.value && promptForPassword) {
+    const password = window.prompt('Enter the agent password. This session lasts two minutes.');
+    if (!password) return null;
+    remotePasswordInput.value = password;
+    agentSessionExpiresAt = Date.now() + 2 * 60 * 1000;
+  }
+  return remotePasswordInput.value || null;
+}
+
 function updateCounts() {
   sitesCount.textContent = sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean).length;
   appsCount.textContent = appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean).length;
@@ -97,6 +115,39 @@ function updateCounts() {
 
 function selectedDevices() {
   return discoveredDevices.filter((device) => document.querySelector(`[data-device-ip="${device.ip}"]`)?.checked);
+}
+
+function normalizedMac(mac) {
+  if (!mac || mac === 'local' || mac === 'Detected on LAN') return null;
+  const value = String(mac).replace(/[:-]/g, '').toLowerCase();
+  return /^[\da-f]{12}$/.test(value) ? value : null;
+}
+
+function devicesMatch(left, right) {
+  const leftMac = normalizedMac(left.mac);
+  const rightMac = normalizedMac(right.mac);
+  return (leftMac && rightMac && leftMac === rightMac) || left.ip === right.ip;
+}
+
+async function reconcileNetworkGroups(devices) {
+  let changed = false;
+  const updatedGroups = networkGroups.map((group) => ({
+    ...group,
+    devices: group.devices.map((savedDevice) => {
+      const savedMac = normalizedMac(savedDevice.mac);
+      const match = devices.find((device) => savedMac
+        ? normalizedMac(device.mac) === savedMac
+        : device.ip === savedDevice.ip);
+      if (!match) return savedDevice;
+      const updated = { ...savedDevice, ...match };
+      if (JSON.stringify(updated) !== JSON.stringify(savedDevice)) changed = true;
+      return updated;
+    })
+  }));
+
+  if (!changed) return;
+  for (const group of updatedGroups) await window.api.saveNetworkGroup(group);
+  networkGroups = updatedGroups;
 }
 
 function escapeHtml(value) {
@@ -130,7 +181,7 @@ async function openDeviceDetails(ip) {
 
 async function refreshDeviceDetails() {
   if (!selectedDevice) return;
-  const password = remotePasswordInput.value;
+  const password = agentSessionPassword(false);
   if (!password) {
     detailOnline.textContent = 'Enter the agent password above';
     return;
@@ -166,12 +217,22 @@ function renderGroups() {
 function savedDevices() {
   const devices = new Map();
   networkGroups.forEach((group) => group.devices.forEach((device) => {
-    const current = devices.get(device.ip) || { ...device, groups: [] };
+    const key = normalizedMac(device.mac) || device.ip;
+    const current = devices.get(key) || { ...device, groups: [] };
     if (!current.name && device.name) current.name = device.name;
     if (!current.groups.includes(group.name)) current.groups.push(group.name);
-    devices.set(device.ip, current);
+    devices.set(key, current);
   }));
   return [...devices.values()];
+}
+
+function savedDeviceKey(device) {
+  return encodeURIComponent(normalizedMac(device.mac) || device.ip);
+}
+
+function selectedSavedDevices() {
+  const selectedKeys = new Set([...savedPcCards.querySelectorAll('[data-saved-select]:checked')].map((input) => input.dataset.savedSelect));
+  return savedDevices().filter((device) => selectedKeys.has(savedDeviceKey(device)));
 }
 
 function renderSavedPcCards() {
@@ -181,12 +242,34 @@ function renderSavedPcCards() {
     savedPcCards.innerHTML = '<div class="empty-devices">Save a group to see its PCs here.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button><button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button></div></article>`).join('');
+  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button><button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button></div></article>`).join('');
   savedPcCards.querySelectorAll('[data-card-view]').forEach((button) => button.addEventListener('click', () => openSavedDevice(button.dataset.cardView)));
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
   savedPcCards.querySelectorAll('[data-card-shutdown]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardShutdown, 'shutdown')));
+  savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => input.addEventListener('change', updateSavedSelectionState));
+  updateSavedSelectionState();
+  updateSavedDiscoveryStatuses(devices);
   refreshSavedPcStatuses(devices);
+}
+
+function updateSavedDiscoveryStatuses(devices) {
+  devices.forEach((device) => {
+    const card = savedPcCards.querySelector(`[data-saved-card="${CSS.escape(device.ip)}"]`);
+    if (!card) return;
+    const discovered = discoveredDevices.some((item) => devicesMatch(item, device));
+    card.querySelector('.saved-card-status').textContent = discovered ? 'Online' : 'Offline';
+    card.querySelector('.device-state').classList.toggle('local', discovered);
+  });
+}
+
+function updateSavedSelectionState() {
+  const inputs = [...savedPcCards.querySelectorAll('[data-saved-select]')];
+  selectedSavedKeys = new Set(inputs.filter((input) => input.checked).map((input) => input.dataset.savedSelect));
+  const selected = inputs.filter((input) => input.checked).length;
+  selectAllSaved.checked = inputs.length > 0 && selected === inputs.length;
+  selectAllSaved.indeterminate = selected > 0 && selected < inputs.length;
+  runBulkTaskBtn.textContent = selected ? `Run task on ${selected} selected` : 'Run task on selected';
 }
 
 function openSavedDevice(ip) {
@@ -197,7 +280,7 @@ function openSavedDevice(ip) {
 }
 
 async function refreshSavedPcStatuses(devices) {
-  const password = remotePasswordInput.value;
+  const password = agentSessionPassword(false);
   if (!password) return;
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
@@ -219,25 +302,44 @@ async function runSavedDeviceTask(ip, command) {
 }
 
 async function runBulkCommand(devices, command, message) {
-  const password = remotePasswordInput.value;
+  const isAdmin = command === 'shutdown';
+  const password = agentSessionPassword();
   if (!devices.length || !password) {
-    showToast('Enter the agent password in Network controller first');
+    showToast('Enter the agent password first');
     return;
   }
   const payload = command === 'update-sites' ? sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'update-apps' ? appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'start-lock' ? { minutes: parseInt(lockMinutesInput.value, 10) || 60 } : null;
   runBulkTaskBtn.disabled = true;
-  const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload)));
+  const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator')));
   const success = results.filter((result) => result.status === 'fulfilled').length;
   runBulkTaskBtn.disabled = false;
   showToast(`${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}`);
   refreshSavedPcStatuses(devices);
 }
 
+async function refreshSavedNetwork() {
+  if (savedNetworkRefreshRunning || !networkGroups.length) return;
+  savedNetworkRefreshRunning = true;
+  try {
+    const devices = await window.api.discoverNetwork();
+    discoveredDevices = devices;
+    await reconcileNetworkGroups(devices);
+    renderGroups();
+  } catch (_) {
+    refreshSavedPcStatuses(savedDevices());
+  } finally {
+    savedNetworkRefreshRunning = false;
+  }
+}
+
 async function scanNetwork() {
   scanNetworkBtn.disabled = true;
   scanNetworkBtn.firstElementChild.textContent = 'Scanning...';
   try {
-    renderDevices(await window.api.discoverNetwork());
+    const devices = await window.api.discoverNetwork();
+    await reconcileNetworkGroups(devices);
+    renderDevices(devices);
+    renderGroups();
     showToast('Network scan complete');
   } catch (error) {
     showToast(`Network scan failed: ${error.message}`);
@@ -329,13 +431,16 @@ function applyGroupSelection() {
   const knownIps = new Set(discoveredDevices.map((device) => device.ip));
   const missingDevices = group.devices.filter((device) => !knownIps.has(device.ip));
   if (missingDevices.length) renderDevices([...discoveredDevices, ...missingDevices]);
-  document.querySelectorAll('[data-device-ip]').forEach((checkbox) => { checkbox.checked = group.devices.some((device) => device.ip === checkbox.dataset.deviceIp); });
+  document.querySelectorAll('[data-device-ip]').forEach((checkbox) => {
+    const device = discoveredDevices.find((item) => item.ip === checkbox.dataset.deviceIp);
+    checkbox.checked = Boolean(device && group.devices.some((savedDevice) => devicesMatch(savedDevice, device)));
+  });
   groupStatus.textContent = `${group.devices.length} devices selected`;
 }
 
 async function sendGroup(command, payload, message) {
   const devices = selectedDevices();
-  const password = remotePasswordInput.value;
+  const password = agentSessionPassword();
   if (!devices.length || !password) {
     showToast('Select devices and enter the agent password first');
     return;
@@ -347,7 +452,8 @@ async function sendGroup(command, payload, message) {
   showToast(`${message} on ${success} device${success === 1 ? '' : 's'}`);
 }
 async function sendSingleDevice(command, payload, message) {
-  const password = remotePasswordInput.value;
+  const isAdmin = command === 'shutdown';
+  const password = agentSessionPassword();
   if (!selectedDevice || !password) {
     showToast('Select a device and enter the agent password first');
     return;
@@ -355,7 +461,7 @@ async function sendSingleDevice(command, payload, message) {
   detailSitesBtn.disabled = true;
   detailShutdownBtn.disabled = true;
   try {
-    await window.api.remoteCommand(`${selectedDevice.ip}:47821`, password, command, payload);
+    await window.api.remoteCommand(`${selectedDevice.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator');
     showToast(message);
     await refreshDeviceDetails();
   } catch (error) {
@@ -368,7 +474,7 @@ async function sendSingleDevice(command, payload, message) {
 
 async function sendRemote(command, payload, successMessage) {
   const host = remoteHostInput.value.trim();
-  const password = remotePasswordInput.value;
+  const password = agentSessionPassword();
   if (!host || !password) {
     showToast('Enter the remote address and password first');
     return;
@@ -497,9 +603,17 @@ groupSitesBtn.addEventListener('click', () => sendGroup('update-sites', sitesInp
 groupAppsBtn.addEventListener('click', () => sendGroup('update-apps', appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'App list sent'));
 groupLockBtn.addEventListener('click', () => sendGroup('start-lock', { minutes: parseInt(lockMinutesInput.value, 10) || 60 }, 'Group lock started'));
 runBulkTaskBtn.addEventListener('click', () => {
-  const devices = savedDevices();
+  const devices = selectedSavedDevices();
+  if (!devices.length) {
+    showToast('Select at least one saved PC');
+    return;
+  }
   if (bulkTask.value === 'shutdown' && !confirm(`Shut down all ${devices.length} saved PCs?`)) return;
   runBulkCommand(devices, bulkTask.value, 'Task completed');
+});
+selectAllSaved.addEventListener('change', () => {
+  savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => { input.checked = selectAllSaved.checked; });
+  updateSavedSelectionState();
 });
 closeDetailBtn.addEventListener('click', () => { deviceDetail.classList.add('hidden'); selectedDevice = null; });
 detailRefreshBtn.addEventListener('click', refreshDeviceDetails);
@@ -546,3 +660,4 @@ window.api.getUpdateStatus().then(renderUpdateStatus);
 window.api.getNetworkGroups().then((groups) => { networkGroups = groups; renderGroups(); });
 loadData();
 setInterval(refreshLockStatus, 5000);
+setInterval(refreshSavedNetwork, 30000);

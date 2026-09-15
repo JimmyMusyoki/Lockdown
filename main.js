@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const https = require('https');
 
 const store = require('./src/store');
 const hosts = require('./src/hostsBlocker');
@@ -21,6 +22,7 @@ let watchdogTimer;
 let updateTimer;
 let isQuitting = false;
 let automaticUpdates = true;
+const certificatePins = new Map();
 let updateState = {
   status: 'idle',
   currentVersion: app.getVersion(),
@@ -37,21 +39,55 @@ function configureWindowsStartup() {
   app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
 }
 
-async function remoteCommand(host, password, command, payload) {
-  const baseUrl = `http://${host.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
-  const challengeResponse = await fetch(`${baseUrl}/challenge`);
-  if (!challengeResponse.ok) throw new Error('Could not reach that device. Check its IP and firewall.');
-  const { nonce } = await challengeResponse.json();
-  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-  const proof = crypto.createHmac('sha256', passwordHash).update(nonce).digest('hex');
-  const response = await fetch(`${baseUrl}/command`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nonce, proof, command, payload })
+async function remoteCommand(host, password, command, payload, role = 'operator') {
+  const address = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const requestJson = (method, route, body) => new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: address.split(':')[0],
+      port: address.split(':')[1] || 47821,
+      path: route,
+      method,
+      rejectUnauthorized: false,
+      headers: body ? { 'Content-Type': 'application/json' } : {}
+    }, (response) => {
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { text += chunk; });
+      response.on('end', () => {
+        try { resolve({ status: response.statusCode, body: JSON.parse(text) }); }
+        catch (_) { reject(new Error('Invalid response from remote agent.')); }
+      });
+    });
+    request.on('socket', (socket) => socket.once('secureConnect', () => {
+      const fingerprint = socket.getPeerCertificate().fingerprint256;
+      const previous = certificatePins.get(address);
+      if (previous && previous !== fingerprint) {
+        request.destroy(new Error('Remote certificate changed. Connection rejected.'));
+        return;
+      }
+      if (fingerprint) certificatePins.set(address, fingerprint);
+    }));
+    request.on('error', reject);
+    if (body) request.write(JSON.stringify(body));
+    request.end();
   });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Remote command failed.');
-  return result.data;
+
+  const challengeResponse = await requestJson('GET', '/challenge');
+  if (challengeResponse.status !== 200) throw new Error('Could not reach that device. Check its IP and firewall.');
+  const { nonce } = challengeResponse.body;
+  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+  const request = {
+    nonce,
+    timestamp: Date.now(),
+    requestId: crypto.randomUUID(),
+    command,
+    payload: payload === undefined ? null : payload,
+    role
+  };
+  const proof = networkAgent.createRequestProof(passwordHash, request);
+  const response = await requestJson('POST', '/command', { ...request, proof });
+  if (response.status < 200 || response.status >= 300) throw new Error(response.body.error || 'Remote command failed.');
+  return response.body.data;
 }
 
 function createWindow() {
@@ -211,6 +247,21 @@ function getActivity() {
   return store.load().activity || [];
 }
 
+function setNetworkPasswords(operatorPassword, adminPassword) {
+  if (typeof operatorPassword !== 'string' || operatorPassword.length < 12) {
+    throw new Error('Operator password must be at least 12 characters.');
+  }
+  if (typeof adminPassword !== 'string' || adminPassword.length < 12) {
+    throw new Error('Admin password must be at least 12 characters.');
+  }
+  const data = store.load();
+  data.network = data.network || {};
+  data.network.passwordHash = networkAgent.hashPassword(operatorPassword);
+  data.network.adminPasswordHash = networkAgent.hashPassword(adminPassword);
+  store.save(data);
+  return { operatorConfigured: true, adminConfigured: true };
+}
+
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.jimmy.lockdownblocker');
   Menu.setApplicationMenu(null);
@@ -230,6 +281,8 @@ app.whenReady().then(() => {
       updateApps,
       startLock,
       getActivity,
+      recordActivity,
+      certificateDirectory: path.join(app.getPath('userData'), 'agent-certificate'),
       port: data.network?.port || networkAgent.DEFAULT_PORT
     });
     windowsPermissions.ensurePrivateNetworkAccess(data.network?.port || networkAgent.DEFAULT_PORT)
@@ -297,8 +350,17 @@ ipcMain.handle('get-lock-status', () => {
   };
 });
 
-ipcMain.handle('remote-command', (_evt, { host, password, command, payload }) =>
-  remoteCommand(host, password, command, payload)
+ipcMain.handle('get-network-auth', () => {
+  const network = store.load().network || {};
+  return { operatorConfigured: Boolean(network.passwordHash), adminConfigured: Boolean(network.adminPasswordHash) };
+});
+
+ipcMain.handle('set-network-passwords', (_evt, { operatorPassword, adminPassword }) =>
+  setNetworkPasswords(operatorPassword, adminPassword)
+);
+
+ipcMain.handle('remote-command', (_evt, { host, password, command, payload, role }) =>
+  remoteCommand(host, password, command, payload, role)
 );
 
 ipcMain.handle('discover-network', () => networkDiscovery.discoverNetwork());

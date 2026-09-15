@@ -13,10 +13,12 @@ contextBridge.exposeInMainWorld('api', {
   updateApps: (apps) => ipcRenderer.invoke('update-apps', apps),
   startLock: (minutes, password) => ipcRenderer.invoke('start-lock', { minutes, password }),
   getLockStatus: () => ipcRenderer.invoke('get-lock-status')
-  ,remoteCommand: (host, password, command, payload) => ipcRenderer.invoke('remote-command', { host, password, command, payload }),
+  ,remoteCommand: (host, password, command, payload, role) => ipcRenderer.invoke('remote-command', { host, password, command, payload, role }),
   discoverNetwork: () => ipcRenderer.invoke('discover-network'),
   networkSpeedTest: () => ipcRenderer.invoke('network-speed-test'),
   onNetworkSpeedStage: (callback) => ipcRenderer.on('network-speed-stage', (_event, stage) => callback(stage)),
+  getNetworkAuth: () => ipcRenderer.invoke('get-network-auth'),
+  setNetworkPasswords: (operatorPassword, adminPassword) => ipcRenderer.invoke('set-network-passwords', { operatorPassword, adminPassword }),
   getNetworkGroups: () => ipcRenderer.invoke('get-network-groups'),
   saveNetworkGroup: (group) => ipcRenderer.invoke('save-network-group', group)
 });

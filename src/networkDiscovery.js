@@ -91,7 +91,7 @@ async function discoverNetwork() {
   try {
     output = await exec('arp', ['-a']);
   } catch (_) {
-    return local.map((item) => ({ ip: item.address, name: os.hostname(), nameAvailable: true, mac: 'local', local: true }));
+    return local.map((item) => ({ ip: item.address, name: os.hostname(), nameAvailable: true, mac: item.mac || 'local', local: true }));
   }
 
   const addresses = new Set();
@@ -113,7 +113,7 @@ async function discoverNetwork() {
       ip,
       name,
       nameAvailable: Boolean(name),
-      mac: macs.get(ip) || (isLocal ? 'local' : 'Detected on LAN'),
+      mac: macs.get(ip) || (isLocal ? local.find((item) => item.address === ip)?.mac || 'local' : 'Detected on LAN'),
       local: isLocal
     };
   }));

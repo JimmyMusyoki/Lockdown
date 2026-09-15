@@ -29,7 +29,7 @@ npm start
 
 ### Network control
 
-Install and run the app on each desktop on the same LAN. Each installation exposes a protected agent on port `47821` by default. From the controller panel, enter the target computer's local IP address and port, then authenticate with the shared agent password. Commands use a challenge-response exchange; the password itself and its stored hash are never sent in an API response.
+Install and run the app on each desktop on the same LAN. Each installation exposes an HTTPS agent on port `47821` by default. All installations use the shared agent password configured for the app. Enter it in the Network controller panel to start a two-minute command session; after that, the app prompts again. Commands use a single-use challenge, timestamp, request ID, and signed command envelope. The password itself is never sent over the network. The controller pins each agent's first observed certificate for the current session and rejects certificate changes.
 
 The installed build starts with Windows and runs in the background from the system tray. It requests administrator rights so it can edit the hosts file, control processes, and create a private-network Windows Firewall rule for port `47821`. Use the tray menu's **Quit Lockdown** command to stop it completely.
 

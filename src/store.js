@@ -18,6 +18,7 @@ const DEFAULT_DATA = {
     agentEnabled: true,
     port: 47821,
     passwordHash: '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae',
+    adminPasswordHash: '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae',
     groups: []
   },
   activity: []

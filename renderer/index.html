@@ -126,9 +126,10 @@
         <section id="saved-pcs" class="saved-pcs-view" data-tab-section="saved-pcs">
           <div class="section-heading"><div><span class="eyebrow">Device fleet</span><h2>Saved PCs</h2></div><span id="saved-pc-count" class="scope-tag">0 saved</span></div>
           <div class="bulk-panel">
-            <div><h3>Run a task across every saved PC</h3><p>All actions use the agent password in the Network controller panel.</p></div>
+            <div><h3>Run a task across selected PCs</h3><p>Choose individual computers below or select all.</p></div>
+            <label><input id="select-all-saved" type="checkbox"> Select all</label>
             <select id="bulk-task" aria-label="Task for all saved PCs"><option value="update-sites">Apply website list</option><option value="update-apps">Apply app list</option><option value="start-lock">Start focus lock</option><option value="shutdown">Shut down all PCs</option></select>
-            <button id="run-bulk-task" class="primary-action">Run task on all</button>
+            <button id="run-bulk-task" class="primary-action">Run task on selected</button>
           </div>
           <div id="saved-pc-cards" class="saved-pc-cards"><div class="empty-devices">Save a group to see its PCs here.</div></div>
         </section>
@@ -162,10 +163,10 @@
 
         <section class="network-info" data-tab-section="network">
           <div class="network-icon">⌁</div>
-          <div class="network-copy"><span class="eyebrow">Network controller</span><h3>Control another computer</h3><p>Install this same app on the other computer, keep its agent enabled, then enter its local IP address and password here.</p></div>
+          <div class="network-copy"><span class="eyebrow">Network controller</span><h3>Control another computer</h3><p>Enter the shared agent password to start a two-minute command session.</p></div>
           <div class="remote-controls">
             <label class="remote-label">Device address<input id="remote-host" type="text" placeholder="192.168.1.24:47821" aria-label="Remote computer address" /></label>
-            <label class="remote-label">Agent password<input id="remote-password" type="password" placeholder="Enter password" aria-label="Remote agent password" /></label>
+            <label class="remote-label">Agent password<input id="remote-password" type="password" placeholder="Required for commands" aria-label="Remote agent password" autocomplete="current-password" /></label>
             <div class="remote-actions"><button id="remote-connect" class="connect-button">Test connection</button><span id="remote-status" class="remote-status">Not connected</span></div>
             <div class="remote-actions command-actions"><button id="remote-sites">Send website list</button><button id="remote-apps">Send app list</button><button id="remote-lock">Lock remote</button></div>
           </div>
