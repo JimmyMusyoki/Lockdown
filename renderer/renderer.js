@@ -164,7 +164,7 @@ function renderDevices(devices) {
   deviceList.innerHTML = devices.map((device) => {
     const displayName = device.nameAvailable ? escapeHtml(device.name) : 'Name unavailable';
     const nameNote = device.nameAvailable ? 'PC name' : 'Enable Network Discovery on this PC';
-    return `<div class="device-row"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.local ? 'local' : ''}"></span><button class="device-open" data-open-device="${escapeHtml(device.ip)}"><span class="device-details"><strong>${displayName}<em>${nameNote}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><span class="agent-badge">View details →</span></button></div>`;
+    return `<div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><button class="device-open" data-open-device="${escapeHtml(device.ip)}"><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><span class="agent-badge">View details →</span></button></div>`;
   }).join('');
   deviceList.querySelectorAll('[data-open-device]').forEach((button) => button.addEventListener('click', () => openDeviceDetails(button.dataset.openDevice)));
 }
@@ -242,7 +242,7 @@ function renderSavedPcCards() {
     savedPcCards.innerHTML = '<div class="empty-devices">Save a group to see its PCs here.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button><button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button></div></article>`).join('');
+  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button><button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button></div></article>`).join('');
   savedPcCards.querySelectorAll('[data-card-view]').forEach((button) => button.addEventListener('click', () => openSavedDevice(button.dataset.cardView)));
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
@@ -257,9 +257,9 @@ function updateSavedDiscoveryStatuses(devices) {
   devices.forEach((device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${CSS.escape(device.ip)}"]`);
     if (!card) return;
-    const discovered = discoveredDevices.some((item) => devicesMatch(item, device));
-    card.querySelector('.saved-card-status').textContent = discovered ? 'Online' : 'Offline';
-    card.querySelector('.device-state').classList.toggle('local', discovered);
+    const discovered = discoveredDevices.find((item) => devicesMatch(item, device));
+    card.querySelector('.saved-card-status').textContent = discovered?.online ? 'Online' : 'Offline';
+    card.querySelector('.device-state').classList.toggle('local', Boolean(discovered?.online));
   });
 }
 

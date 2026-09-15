@@ -20,6 +20,16 @@ function isUsableAddress(ip) {
   return parts.length === 4 && parts.every((part) => part >= 0 && part <= 255) && parts[0] < 224 && parts[3] !== 255;
 }
 
+function inferDeviceType(name, local) {
+  if (local) return 'pc';
+  const value = String(name || '').toLowerCase();
+  if (/iphone|ipad|android|pixel|galaxy|mobile/.test(value)) return 'phone';
+  if (/laptop|notebook|macbook/.test(value)) return 'laptop';
+  if (/desktop|pc|workstation|windows|computer/.test(value)) return 'pc';
+  if (/tv|roku|chromecast|firestick/.test(value)) return 'tv';
+  return 'unknown';
+}
+
 function subnetHosts(address, netmask) {
   const ipParts = address.split('.').map(Number);
   const maskParts = netmask.split('.').map(Number);
@@ -91,7 +101,15 @@ async function discoverNetwork() {
   try {
     output = await exec('arp', ['-a']);
   } catch (_) {
-    return local.map((item) => ({ ip: item.address, name: os.hostname(), nameAvailable: true, mac: item.mac || 'local', local: true }));
+    return local.map((item) => ({
+      ip: item.address,
+      name: os.hostname(),
+      nameAvailable: true,
+      mac: item.mac || 'local',
+      local: true,
+      online: true,
+      type: 'pc'
+    }));
   }
 
   const addresses = new Set();
@@ -104,6 +122,7 @@ async function discoverNetwork() {
     }
   }
 
+  const onlineAddresses = new Set([...local.map((item) => item.address), ...probedAddresses]);
   for (const item of local) addresses.add(item.address);
   for (const ip of probedAddresses) addresses.add(ip);
   const devices = await Promise.all([...addresses].map(async (ip) => {
@@ -114,10 +133,12 @@ async function discoverNetwork() {
       name,
       nameAvailable: Boolean(name),
       mac: macs.get(ip) || (isLocal ? local.find((item) => item.address === ip)?.mac || 'local' : 'Detected on LAN'),
-      local: isLocal
+      local: isLocal,
+      online: onlineAddresses.has(ip),
+      type: inferDeviceType(name, isLocal)
     };
   }));
-  return devices.sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+  return devices.sort((a, b) => Number(b.online) - Number(a.online) || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
 }
 
 module.exports = { discoverNetwork };
