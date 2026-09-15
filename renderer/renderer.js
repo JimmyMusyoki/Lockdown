@@ -217,7 +217,7 @@ function renderGroups() {
 function savedDevices() {
   const devices = new Map();
   networkGroups.forEach((group) => group.devices.forEach((device) => {
-    const key = normalizedMac(device.mac) || device.ip;
+    const key = device.local ? 'local-device' : normalizedMac(device.mac) || device.ip;
     const current = devices.get(key) || { ...device, groups: [] };
     if (!current.name && device.name) current.name = device.name;
     if (!current.groups.includes(group.name)) current.groups.push(group.name);
@@ -227,7 +227,11 @@ function savedDevices() {
 }
 
 function savedDeviceKey(device) {
-  return encodeURIComponent(normalizedMac(device.mac) || device.ip);
+  return encodeURIComponent(device.local ? 'local-device' : normalizedMac(device.mac) || device.ip);
+}
+
+function isCurrentDevice(device) {
+  return discoveredDevices.some((item) => item.local && devicesMatch(item, device));
 }
 
 function selectedSavedDevices() {
@@ -242,7 +246,7 @@ function renderSavedPcCards() {
     savedPcCards.innerHTML = '<div class="empty-devices">Save a group to see its PCs here.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button><button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button></div></article>`).join('');
+  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`).join('');
   savedPcCards.querySelectorAll('[data-card-view]').forEach((button) => button.addEventListener('click', () => openSavedDevice(button.dataset.cardView)));
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
@@ -297,11 +301,20 @@ async function refreshSavedPcStatuses(devices) {
 async function runSavedDeviceTask(ip, command) {
   const device = savedDevices().find((item) => item.ip === ip);
   if (!device) return;
+  if (command === 'shutdown' && isCurrentDevice(device)) {
+    showToast('This computer cannot be shut down remotely.');
+    return;
+  }
   if (command === 'shutdown' && !confirm(`Shut down ${device.name || device.ip}?`)) return;
   await runBulkCommand([device], command, command === 'shutdown' ? 'Shutdown sent' : 'Task sent');
 }
 
 async function runBulkCommand(devices, command, message) {
+  if (command === 'shutdown') devices = devices.filter((device) => !isCurrentDevice(device));
+  if (!devices.length) {
+    showToast('No remote PCs are selected for shutdown');
+    return;
+  }
   const isAdmin = command === 'shutdown';
   const password = agentSessionPassword();
   if (!devices.length || !password) {
