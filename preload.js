@@ -2,6 +2,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('get-data'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
+  setAutomaticUpdates: (enabled) => ipcRenderer.invoke('set-automatic-updates', enabled),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, status) => callback(status)),
   updateSites: (sites) => ipcRenderer.invoke('update-sites', sites),
   updateApps: (apps) => ipcRenderer.invoke('update-apps', apps),
   startLock: (minutes, password) => ipcRenderer.invoke('start-lock', { minutes, password }),

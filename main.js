@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, screen } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
 const store = require('./src/store');
@@ -9,11 +10,30 @@ const networkAgent = require('./src/networkAgent');
 const crypto = require('crypto');
 const networkDiscovery = require('./src/networkDiscovery');
 const networkSpeedTest = require('./src/networkSpeedTest');
+const windowsPermissions = require('./src/windowsPermissions');
 
 let mainWindow;
 let speedWindow;
 let tray;
 let watchdogTimer;
+let updateTimer;
+let isQuitting = false;
+let automaticUpdates = true;
+let updateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  availableVersion: null,
+  downloaded: false,
+  progress: 0,
+  message: '',
+  automaticUpdates
+};
+
+function configureWindowsStartup() {
+  if (process.platform !== 'win32') return;
+  const args = app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'];
+  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
+}
 
 async function remoteCommand(host, password, command, payload) {
   const baseUrl = `http://${host.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
@@ -36,6 +56,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900,
     height: 650,
+    show: !process.argv.includes('--hidden'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -44,15 +65,55 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  // Minimize to tray instead of closing — Cold Turkey does this so the
-  // blocker can't be killed just by closing the window.
   mainWindow.on('close', (e) => {
-    const data = store.load();
-    if (lockManager.isLocked(data.lock)) {
-      e.preventDefault();
-      mainWindow.hide();
-    }
+    if (isQuitting) return;
+    e.preventDefault();
+    mainWindow.hide();
   });
+}
+
+function sendUpdateStatus(status, details = {}) {
+  updateState = { ...updateState, status, ...details };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-status', updateState);
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged) {
+    sendUpdateStatus('development', { message: 'Updates are available in packaged builds.' });
+    return updateState;
+  }
+  sendUpdateStatus('checking', { message: 'Checking for updates...' });
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    sendUpdateStatus('error', { message: error.message });
+  }
+  return updateState;
+}
+
+function configureAutoUpdates() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateStatus('available', { availableVersion: info.version, downloaded: false, progress: 0, message: 'A new version is available.' });
+  });
+  autoUpdater.on('update-not-available', () => {
+    sendUpdateStatus('current', { availableVersion: null, downloaded: false, progress: 0, message: 'You are using the latest version.' });
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus('downloading', { progress: Math.round(progress.percent), message: 'Downloading update...' });
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus('downloaded', { availableVersion: info.version, downloaded: true, progress: 100, message: 'Update ready to install.' });
+  });
+  autoUpdater.on('error', (error) => {
+    sendUpdateStatus('error', { message: error.message });
+  });
+  updateTimer = setInterval(() => {
+    if (automaticUpdates) checkForUpdates();
+  }, 6 * 60 * 60 * 1000);
+  updateTimer.unref();
 }
 
 function createTray() {
@@ -62,7 +123,7 @@ function createTray() {
     Menu.buildFromTemplate([
       { label: 'Open', click: () => mainWindow.show() },
       { label: 'Open speed monitor', click: () => createSpeedWindow() },
-      { label: 'Quit', click: () => app.exit(0) }
+      { label: 'Quit Lockdown', click: () => { isQuitting = true; app.quit(); } }
     ])
   );
 }
@@ -110,6 +171,7 @@ function updateSites(sites) {
   data.blockedSites = sites;
   store.save(data);
   hosts.applyBlockedSites(sites);
+  recordActivity('Website block list updated', `${sites.length} site${sites.length === 1 ? '' : 's'}`);
   return data;
 }
 
@@ -117,6 +179,7 @@ function updateApps(appsList) {
   const data = store.load();
   data.blockedApps = appsList;
   store.save(data);
+  recordActivity('Application block list updated', `${appsList.length} app${appsList.length === 1 ? '' : 's'}`);
   return data;
 }
 
@@ -124,11 +187,27 @@ function startLock(minutes, password) {
   const data = store.load();
   data.lock = lockManager.startLock(minutes, password);
   store.save(data);
+  recordActivity('Focus lock started', `${minutes} minute session`);
   return data;
 }
 
+function recordActivity(title, detail) {
+  const data = store.load();
+  data.activity = Array.isArray(data.activity) ? data.activity : [];
+  data.activity.unshift({ id: crypto.randomUUID(), timestamp: new Date().toISOString(), title, detail });
+  data.activity = data.activity.slice(0, 100);
+  store.save(data);
+}
+
+function getActivity() {
+  return store.load().activity || [];
+}
+
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+  configureWindowsStartup();
   createWindow();
+  configureAutoUpdates();
   createTray();
   startWatchdog();
 
@@ -141,9 +220,14 @@ app.whenReady().then(() => {
       updateSites,
       updateApps,
       startLock,
+      getActivity,
       port: data.network?.port || networkAgent.DEFAULT_PORT
     });
+    windowsPermissions.ensurePrivateNetworkAccess(data.network?.port || networkAgent.DEFAULT_PORT)
+      .then((result) => console.log(result.created ? 'Private network firewall rule created.' : 'Private network firewall rule ready.'))
+      .catch((error) => console.error('Private network firewall rule unavailable:', error.message));
   }
+  checkForUpdates();
 });
 
 app.on('window-all-closed', () => {
@@ -153,6 +237,36 @@ app.on('window-all-closed', () => {
 // ---------- IPC handlers (renderer <-> main) ----------
 
 ipcMain.handle('get-data', () => store.load());
+
+ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('get-update-status', () => updateState);
+
+ipcMain.handle('set-automatic-updates', (_evt, enabled) => {
+  automaticUpdates = Boolean(enabled);
+  updateState.automaticUpdates = automaticUpdates;
+  return updateState;
+});
+
+ipcMain.handle('check-for-updates', () => checkForUpdates());
+
+ipcMain.handle('download-update', async () => {
+  if (!app.isPackaged) return updateState;
+  try {
+    sendUpdateStatus('downloading', { progress: 0, message: 'Downloading update...' });
+    await autoUpdater.downloadUpdate();
+  } catch (error) {
+    sendUpdateStatus('error', { message: error.message });
+  }
+  return updateState;
+});
+
+ipcMain.handle('install-update', () => {
+  if (!app.isPackaged || !updateState.downloaded) return false;
+  isQuitting = true;
+  autoUpdater.quitAndInstall(false, true);
+  return true;
+});
 
 ipcMain.handle('update-sites', (_evt, sites) => {
   return updateSites(sites);

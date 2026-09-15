@@ -1,5 +1,7 @@
 const http = require('http');
 const crypto = require('crypto');
+const os = require('os');
+const { execFile } = require('child_process');
 
 const DEFAULT_PORT = 47821;
 const DEFAULT_PASSWORD_HASH = '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae';
@@ -22,6 +24,11 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
+function publicLock(lock) {
+  if (!lock) return null;
+  return { active: Boolean(lock.active), unlockAt: lock.unlockAt || null };
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -36,7 +43,13 @@ function readBody(request) {
   });
 }
 
-function startNetworkAgent({ getData, updateSites, updateApps, startLock, port = DEFAULT_PORT } = {}) {
+function runShutdown() {
+  return new Promise((resolve, reject) => {
+    execFile('shutdown', ['/s', '/t', '0'], (error) => error ? reject(error) : resolve({ scheduled: true }));
+  });
+}
+
+function startNetworkAgent({ getData, updateSites, updateApps, startLock, getActivity, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && request.url === '/health') {
@@ -71,11 +84,14 @@ function startNetworkAgent({ getData, updateSites, updateApps, startLock, port =
       let result;
       if (body.command === 'get-data') {
         const data = getData();
-        result = { blockedSites: data.blockedSites, blockedApps: data.blockedApps, lock: data.lock };
+        result = { blockedSites: data.blockedSites, blockedApps: data.blockedApps, lock: publicLock(data.lock) };
       }
       else if (body.command === 'update-sites') result = updateSites(body.payload || []);
       else if (body.command === 'update-apps') result = updateApps(body.payload || []);
       else if (body.command === 'start-lock') result = startLock(body.payload || {});
+      else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
+      else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };
+      else if (body.command === 'shutdown') result = await runShutdown();
       else {
         sendJson(response, 400, { error: 'Unknown command' });
         return;

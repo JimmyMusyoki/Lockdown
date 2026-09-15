@@ -9,6 +9,7 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 - **Watchdog** — re-applies the hosts block every 5s, so manually editing the hosts file back doesn't work while a lock is active
 - **Tray persistence** — closing the window while locked hides it instead of quitting, so the block can't be dodged by closing the app
 - **LAN controller** — the same app can run as a password-protected agent on every desktop, while one desktop sends website, app, and lock commands to the others
+- **Background agent** — installed builds start with Windows, stay in the system tray, and open the private-network firewall rule for the LAN agent
 
 ## Requirements
 - Node.js 18+
@@ -30,13 +31,54 @@ npm start
 
 Install and run the app on each desktop on the same LAN. Each installation exposes a protected agent on port `47821` by default. From the controller panel, enter the target computer's local IP address and port, then authenticate with the shared agent password. Commands use a challenge-response exchange; the password itself and its stored hash are never sent in an API response.
 
-Windows Firewall may ask permission for the app's private-network access. Network control is intended for a trusted LAN; it does not provide internet-facing security or router-wide DNS blocking.
+The installed build starts with Windows and runs in the background from the system tray. It requests administrator rights so it can edit the hosts file, control processes, and create a private-network Windows Firewall rule for port `47821`. Use the tray menu's **Quit Lockdown** command to stop it completely.
 
 ## Build a Windows installer
 ```bash
 npm run dist
 ```
 This uses `electron-builder` to produce an NSIS installer in `dist/`. The installer will prompt for admin rights on launch, matching Cold Turkey's behavior.
+
+## Production Updates
+
+Lockdown Blocker uses `electron-updater` with GitHub Releases for production updates. The configured release repository is `JimmyMusyoki/Lockdown`. Clients must install a packaged build; development runs never contact the update service.
+
+### Release a new version
+
+1. Make and test your code changes.
+2. Change the `version` field in `package.json` using semantic versioning (`MAJOR.MINOR.PATCH`). For example:
+
+	```bash
+	npm version 1.1.0 --no-git-tag-version
+	```
+
+	This updates both `package.json` and `package-lock.json`. Use `1.0.1` for a patch, `1.1.0` for a backwards-compatible feature, and `2.0.0` for a breaking release.
+3. Build the Windows installer:
+
+	```bash
+	npm run build
+	```
+
+4. Publish the installer and updater metadata to the GitHub repository's Releases page. With a GitHub token that can create releases, set `GH_TOKEN` and run:
+
+	```powershell
+	$env:GH_TOKEN = "your-github-token"
+	npm run publish
+	```
+
+	The publish configuration is already in `package.json` and targets the `JimmyMusyoki/Lockdown` repository. Alternatively, create a GitHub Release manually and upload every update asset from `dist/`, including the `.exe`, `latest.yml`, and `.blockmap` files. Do not omit `latest.yml`.
+
+### How clients update
+
+Packaged clients check GitHub Releases at startup and every six hours. When a newer release is found, the Overview update panel lets the user download it and then restart to install it. The downloaded installer is verified by `electron-updater` before installation; no arbitrary URL or local path is executed.
+
+Automatic update checks can be turned off in the Overview update panel. A manual **Check for updates** remains available. The current version, last check time, status, download progress, and installation action are shown there.
+
+### Safe testing and failures
+
+Use a new higher version for testing, publish it as a test GitHub Release, and install the previous packaged version on a separate test machine. Never test updates by replacing files inside an installed application. If the check, download, signature, or installation fails, the existing installation stays in place and the update panel reports the error; retry after correcting the release assets or network access.
+
+For production security, publish signed Windows installers by supplying your code-signing certificate through `electron-builder`'s supported environment variables. Do not disable Windows security features or point the updater at an untrusted server.
 
 ## Project structure
 ```

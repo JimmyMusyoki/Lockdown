@@ -22,6 +22,7 @@
         <a class="nav-item" href="#apps"><span class="nav-icon">▦</span>Applications</a>
         <a class="nav-item" href="#network"><span class="nav-icon">⌁</span>Network scope</a>
         <a class="nav-item" href="#speed-view"><span class="nav-icon">◔</span>Speed test</a>
+        <a class="nav-item" href="#saved-pcs"><span class="nav-icon">▣</span>Saved PCs</a>
       </nav>
 
       <div class="sidebar-note">
@@ -32,7 +33,7 @@
     </aside>
 
     <div class="content-shell">
-      <header class="topbar" id="overview">
+      <header class="topbar" id="overview" data-tab-section="overview">
         <div>
           <span class="eyebrow">Your focus space</span>
           <h1>Stay in control of your attention.</h1>
@@ -41,39 +42,50 @@
         <div class="header-status"><span class="status-dot"></span><span>Protection online</span></div>
       </header>
 
-      <div id="lock-banner" class="lock-banner hidden"></div>
+      <div id="lock-banner" class="lock-banner hidden" data-tab-section="overview"></div>
 
       <main>
-        <section class="summary-grid" aria-label="Blocking summary">
+        <section class="summary-grid" aria-label="Blocking summary" data-tab-section="overview">
           <div class="summary-card accent-blue"><span class="summary-label">Websites blocked</span><strong id="sites-count">0</strong><span>on this device</span></div>
           <div class="summary-card accent-orange"><span class="summary-label">Apps blocked</span><strong id="apps-count">0</strong><span>on this device</span></div>
           <div class="summary-card accent-green"><span class="summary-label">Protection</span><strong id="protection-state">Ready</strong><span id="protection-detail">No active lock</span></div>
         </section>
 
-        <div class="section-heading" id="websites">
+        <section class="update-panel" data-tab-section="overview" aria-label="Application updates">
+          <div class="update-panel-copy">
+            <span class="eyebrow">Application updates</span>
+            <h2>Lockdown Blocker <span id="app-version">v--</span></h2>
+            <p id="update-status">Checking for updates...</p>
+            <div class="update-meta"><span id="last-update-check">Last checked: Not yet</span><label class="update-toggle"><input id="automatic-updates" type="checkbox" checked /> Automatic update checks</label></div>
+          </div>
+          <div class="update-actions"><button id="check-updates" class="secondary-button">Check for updates</button><button id="update-action" class="primary-action hidden">Update Now</button></div>
+          <div id="update-progress" class="update-progress hidden"><div><i id="update-progress-bar"></i></div><span id="update-progress-label">0%</span></div>
+        </section>
+
+        <div class="section-heading" id="websites" data-tab-section="websites">
           <div><span class="eyebrow">Block list</span><h2>Websites</h2></div>
           <span class="scope-tag">This device</span>
         </div>
-        <section class="panel list-panel">
+        <section class="panel list-panel" data-tab-section="websites">
           <div class="panel-heading"><div class="panel-icon blue">◎</div><div><h3>Distracting websites</h3><p>One domain per line. Subdomains are covered automatically.</p></div></div>
           <textarea id="sites-input" rows="7" placeholder="youtube.com&#10;facebook.com&#10;reddit.com" aria-label="Blocked websites"></textarea>
           <div class="panel-footer"><span class="field-note">Changes apply immediately after saving.</span><button id="save-sites"><span>Save list</span><span class="button-arrow">→</span></button></div>
         </section>
 
-        <div class="section-heading" id="apps">
+        <div class="section-heading" id="apps" data-tab-section="applications">
           <div><span class="eyebrow">Block list</span><h2>Applications</h2></div>
           <span class="scope-tag">This device</span>
         </div>
-        <section class="panel list-panel">
+        <section class="panel list-panel" data-tab-section="applications">
           <div class="panel-heading"><div class="panel-icon orange">▦</div><div><h3>Distracting applications</h3><p>Use the process name, such as <code>steam.exe</code>.</p></div></div>
           <textarea id="apps-input" rows="7" placeholder="steam.exe&#10;discord.exe&#10;spotify.exe" aria-label="Blocked applications"></textarea>
           <div class="panel-footer"><span class="field-note">Running matches will be closed automatically.</span><button id="save-apps"><span>Save list</span><span class="button-arrow">→</span></button></div>
         </section>
 
-        <div class="section-heading" id="network">
+        <div class="section-heading" id="network" data-tab-section="network">
           <div><span class="eyebrow">Protection schedule</span><h2>Lock timer</h2></div>
         </div>
-        <section class="panel timer-panel">
+        <section class="panel timer-panel" data-tab-section="network">
           <div class="timer-copy"><div class="panel-icon green">◷</div><div><h3>Commit to a focused session</h3><p>Blocking stays active until the timer ends. Your lists remain editable.</p></div></div>
           <div class="timer-form">
             <label>Duration (minutes)<input id="lock-minutes" type="number" value="60" min="1" /></label>
@@ -83,11 +95,11 @@
           <p id="lock-status" class="lock-status"></p>
         </section>
 
-        <div class="section-heading">
+        <div class="section-heading" data-tab-section="network">
           <div><span class="eyebrow">Local network</span><h2>Devices & groups</h2></div>
           <span id="device-count" class="scope-tag">0 devices found</span>
         </div>
-        <section class="panel devices-panel">
+        <section class="panel devices-panel" data-tab-section="network">
           <div class="devices-toolbar">
             <div><h3>Choose computers to control</h3><p>Devices are discovered from your Windows network table. The agent must be installed on a device before commands can reach it.</p></div>
             <button id="scan-network" class="connect-button"><span>Scan network</span><span class="button-arrow">↻</span></button>
@@ -102,14 +114,33 @@
           <div class="group-actions"><button id="group-sites">Send website list to group</button><button id="group-apps">Send app list to group</button><button id="group-lock">Lock group</button><span id="group-status"></span></div>
         </section>
 
-        <section class="speed-panel">
+        <section id="device-detail" class="device-detail-panel hidden" data-tab-section="network">
+          <div class="detail-heading"><div><span class="eyebrow">Saved device</span><h2 id="detail-name">Device details</h2><p id="detail-address"></p></div><button id="close-device-detail" class="secondary-button">Close</button></div>
+          <div class="detail-status"><span id="detail-online-dot" class="device-state"></span><strong id="detail-online">Checking status...</strong><span id="detail-platform"></span></div>
+          <div class="detail-actions"><button id="detail-sites" class="primary-action">Lock sites on this PC</button><button id="detail-refresh" class="secondary-button">Refresh history</button><button id="detail-shutdown" class="danger-button">Shut down PC</button></div>
+          <div class="activity-heading"><h3>Lockdown activity</h3><span>Newest first</span></div>
+          <div id="detail-activity" class="activity-list"><div class="empty-devices">Select a saved computer to view activity.</div></div>
+          <p class="detail-note">Activity shown here is recorded by the Lockdown agent. Browser history requires separate browser-profile permission and is not collected by default.</p>
+        </section>
+
+        <section id="saved-pcs" class="saved-pcs-view" data-tab-section="saved-pcs">
+          <div class="section-heading"><div><span class="eyebrow">Device fleet</span><h2>Saved PCs</h2></div><span id="saved-pc-count" class="scope-tag">0 saved</span></div>
+          <div class="bulk-panel">
+            <div><h3>Run a task across every saved PC</h3><p>All actions use the agent password in the Network controller panel.</p></div>
+            <select id="bulk-task" aria-label="Task for all saved PCs"><option value="update-sites">Apply website list</option><option value="update-apps">Apply app list</option><option value="start-lock">Start focus lock</option><option value="shutdown">Shut down all PCs</option></select>
+            <button id="run-bulk-task" class="primary-action">Run task on all</button>
+          </div>
+          <div id="saved-pc-cards" class="saved-pc-cards"><div class="empty-devices">Save a group to see its PCs here.</div></div>
+        </section>
+
+        <section class="speed-panel" data-tab-section="speed-test">
           <div class="network-icon">⌁</div>
           <div class="speed-copy"><span class="eyebrow">Connection check</span><h3>Internet speed</h3><p>Measure this computer's current connection. This is separate from LAN device discovery.</p></div>
           <div class="speed-results"><div><strong id="speed-download">--</strong><span>Mbps download</span></div><div><strong id="speed-latency">--</strong><span>ms latency</span></div></div>
           <button id="speed-test" class="connect-button"><span>Run speed test</span><span class="button-arrow">→</span></button>
         </section>
 
-        <section class="speed-view" id="speed-view">
+        <section class="speed-view" id="speed-view" data-tab-section="speed-test">
           <div class="section-heading speed-heading"><div><span class="eyebrow">Connection telemetry / instrument cluster</span><h2>Internet speed test</h2></div><span id="speed-live-state" class="scope-tag">CONNECTED</span></div>
           <div class="speed-cluster">
             <div class="speedometer">
@@ -129,7 +160,7 @@
           <div class="network-summary"><div class="summary-title"><span class="eyebrow">Network information</span><strong>MOHI-LAB</strong></div><div><span>PUBLIC IP</span><strong>Detecting...</strong></div><div><span>ISP</span><strong>Starlink</strong></div><div><span>SERVER</span><strong>Nairobi, Kenya</strong></div><div><span>CONNECTION</span><strong class="connected-text"><i></i>Connected</strong></div></div>
         </section>
 
-        <section class="network-info">
+        <section class="network-info" data-tab-section="network">
           <div class="network-icon">⌁</div>
           <div class="network-copy"><span class="eyebrow">Network controller</span><h3>Control another computer</h3><p>Install this same app on the other computer, keep its agent enabled, then enter its local IP address and password here.</p></div>
           <div class="remote-controls">
