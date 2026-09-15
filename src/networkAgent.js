@@ -114,7 +114,7 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, updateSites, updateApps, startLock, getActivity, recordActivity, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
@@ -180,6 +180,7 @@ async function startNetworkAgent({ getData, updateSites, updateApps, startLock, 
       else if (body.command === 'update-sites') result = updateSites(body.payload || []);
       else if (body.command === 'update-apps') result = updateApps(body.payload || []);
       else if (body.command === 'start-lock') result = startLock(body.payload || {});
+      else if (body.command === 'merge-network-group') result = mergeNetworkGroup(body.payload || {});
       else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
       else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };
       else if (body.command === 'shutdown') result = await runShutdown();

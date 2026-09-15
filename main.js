@@ -23,6 +23,7 @@ let updateTimer;
 let isQuitting = false;
 let automaticUpdates = true;
 const certificatePins = new Map();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let updateState = {
   status: 'idle',
   currentVersion: app.getVersion(),
@@ -95,6 +96,7 @@ function createWindow() {
     width: 900,
     height: 650,
     icon: appIcon,
+    skipTaskbar: true,
     show: !process.argv.includes('--hidden'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -247,6 +249,24 @@ function getActivity() {
   return store.load().activity || [];
 }
 
+function mergeNetworkGroup(group) {
+  if (!group || !group.id || !group.name || !Array.isArray(group.devices)) throw new Error('Invalid network group.');
+  const data = store.load();
+  data.network = data.network || {};
+  const groups = Array.isArray(data.network.groups) ? data.network.groups : [];
+  const index = groups.findIndex((item) => item.id === group.id);
+  if (index === -1) groups.push(group);
+  else {
+    const existing = groups[index];
+    const devices = new Map((existing.devices || []).map((device) => [device.mac || device.ip, device]));
+    group.devices.forEach((device) => devices.set(device.mac || device.ip, { ...devices.get(device.mac || device.ip), ...device }));
+    groups[index] = { ...existing, name: group.name, devices: [...devices.values()] };
+  }
+  data.network.groups = groups;
+  store.save(data);
+  return groups;
+}
+
 function setNetworkPasswords(operatorPassword, adminPassword) {
   if (typeof operatorPassword !== 'string' || operatorPassword.length < 12) {
     throw new Error('Operator password must be at least 12 characters.');
@@ -261,6 +281,15 @@ function setNetworkPasswords(operatorPassword, adminPassword) {
   store.save(data);
   return { operatorConfigured: true, adminConfigured: true };
 }
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.jimmy.lockdownblocker');
@@ -281,16 +310,18 @@ app.whenReady().then(() => {
       updateApps,
       startLock,
       getActivity,
+      mergeNetworkGroup,
       recordActivity,
       certificateDirectory: path.join(app.getPath('userData'), 'agent-certificate'),
       port: data.network?.port || networkAgent.DEFAULT_PORT
-    });
+    }).catch((error) => console.error('Network agent failed to start:', error.message));
     windowsPermissions.ensurePrivateNetworkAccess(data.network?.port || networkAgent.DEFAULT_PORT)
       .then((result) => console.log(result.created ? 'Private network firewall rule created.' : 'Private network firewall rule ready.'))
       .catch((error) => console.error('Private network firewall rule unavailable:', error.message));
   }
   checkForUpdates();
 });
+}
 
 app.on('window-all-closed', () => {
   // Do nothing on Windows — keep running in tray so the block persists.

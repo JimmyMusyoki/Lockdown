@@ -318,6 +318,11 @@ async function runBulkCommand(devices, command, message) {
 }
 
 async function refreshSavedNetwork() {
+  const latestGroups = await window.api.getNetworkGroups();
+  if (JSON.stringify(latestGroups) !== JSON.stringify(networkGroups)) {
+    networkGroups = latestGroups;
+    renderGroups();
+  }
   if (savedNetworkRefreshRunning || !networkGroups.length) return;
   savedNetworkRefreshRunning = true;
   try {
@@ -420,9 +425,19 @@ async function saveGroup() {
     return;
   }
   networkGroups = await window.api.saveNetworkGroup({ name, devices });
+  await syncNetworkGroup(networkGroups[networkGroups.length - 1]);
   renderGroups();
   groupNameInput.value = '';
   showToast(`Group “${name}” saved`);
+}
+
+async function syncNetworkGroup(group) {
+  const password = agentSessionPassword();
+  if (!password || !group) return;
+  const peers = discoveredDevices.filter((device) => !device.local);
+  await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
+    `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
+  )));
 }
 
 function applyGroupSelection() {
