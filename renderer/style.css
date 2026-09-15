@@ -37,9 +37,10 @@ button, input, textarea { font: inherit; }
 .brand { display: flex; align-items: center; gap: 11px; margin: 0 8px 58px; }
 .brand-mark {
   display: grid; place-items: center; width: 34px; height: 34px;
-  border-radius: 10px; background: var(--green); color: white;
+  overflow: hidden; border-radius: 10px; background: var(--ink); color: white;
   font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px;
 }
+.brand-mark img { display: block; width: 100%; height: 100%; }
 .brand strong, .brand span { display: block; }
 .brand strong { font-family: 'Space Grotesk', sans-serif; font-size: 16px; letter-spacing: -.3px; }
 .brand span { color: var(--muted); font-size: 11px; margin-top: 2px; }

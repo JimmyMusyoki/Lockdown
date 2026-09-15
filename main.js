@@ -12,6 +12,8 @@ const networkDiscovery = require('./src/networkDiscovery');
 const networkSpeedTest = require('./src/networkSpeedTest');
 const windowsPermissions = require('./src/windowsPermissions');
 
+const appIcon = path.join(__dirname, 'renderer', 'spacecraft.png');
+
 let mainWindow;
 let speedWindow;
 let tray;
@@ -56,6 +58,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900,
     height: 650,
+    icon: appIcon,
     show: !process.argv.includes('--hidden'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -121,7 +124,7 @@ function configureAutoUpdates() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, 'renderer', 'icon.png'));
+  tray = new Tray(path.join(__dirname, 'renderer', 'spacecraft.png'));
   tray.setToolTip('Lockdown Blocker');
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -148,6 +151,7 @@ function createSpeedWindow() {
     frame: false,
     resizable: false,
     skipTaskbar: true,
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -208,6 +212,7 @@ function getActivity() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.jimmy.lockdownblocker');
   Menu.setApplicationMenu(null);
   configureWindowsStartup();
   createWindow();

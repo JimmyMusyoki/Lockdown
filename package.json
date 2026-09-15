@@ -1,6 +1,6 @@
 {
   "name": "lockdown-blocker",
-  "version": "1.1.2",
+  "version": "1.1.4",
   "description": "A Cold Turkey-style website & app blocker with a lock timer",
   "main": "main.js",
   "author": "Jimmy",
@@ -25,6 +25,7 @@
   "build": {
     "appId": "com.jimmy.lockdownblocker",
     "productName": "Lockdown Blocker",
+    "icon": "renderer/spacecraft.png",
     "win": {
       "target": "nsis",
       "requestedExecutionLevel": "requireAdministrator"
