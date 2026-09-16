@@ -84,7 +84,16 @@ function readBody(request) {
 
 function runShutdown() {
   return new Promise((resolve, reject) => {
-    execFile('shutdown', ['/s', '/t', '0'], (error) => error ? reject(error) : resolve({ scheduled: true }));
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const shutdownPath = path.join(systemRoot, 'System32', 'shutdown.exe');
+    execFile(shutdownPath, ['/s', '/f', '/t', '0'], { windowsHide: true }, (error, _stdout, stderr) => {
+      if (!error) {
+        resolve({ scheduled: true });
+        return;
+      }
+      const detail = String(stderr || error.message || '').trim();
+      reject(new Error(detail || `Windows shutdown failed with code ${error.code || 'unknown'}.`));
+    });
   });
 }
 

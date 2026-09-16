@@ -308,6 +308,7 @@ function mergeNetworkGroup(group) {
   }
   data.network.groups = groups;
   store.save(data);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('network-groups-updated');
   return groups;
 }
 

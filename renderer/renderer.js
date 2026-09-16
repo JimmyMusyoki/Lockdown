@@ -414,10 +414,6 @@ async function runBulkCommand(devices, command, message) {
     return;
   }
   const isAdmin = command === 'shutdown';
-  if (!devices.length) {
-    showToast('No remote PCs are selected');
-    return;
-  }
   const password = agentSessionPassword();
   const payload = command === 'update-sites' ? sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'update-apps' ? appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'start-lock' ? { minutes: parseInt(lockMinutesInput.value, 10) || 60 } : null;
   [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = true; });
@@ -426,7 +422,7 @@ async function runBulkCommand(devices, command, message) {
   updateSavedSelectionState();
   const failure = results.find((result) => result.status === 'rejected');
   showToast(success ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}` : failure?.reason?.message || 'Task failed');
-  refreshSavedPcStatuses(devices);
+  if (command !== 'shutdown') refreshSavedPcStatuses(devices);
 }
 
 async function refreshSavedNetwork() {
@@ -577,10 +573,17 @@ async function syncNetworkGroup(group) {
   if (!group || !group.devices.length) return;
   const password = await agentSessionPassword();
   if (!password) return;
-  const peers = discoveredDevices.filter((device) => !device.local);
-  await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
+  const peersByKey = new Map();
+  [...discoveredDevices, ...savedDevices()].forEach((device) => {
+    if (device.local) return;
+    const key = normalizedMac(device.mac) || device.ip;
+    if (key) peersByKey.set(key, { ...peersByKey.get(key), ...device });
+  });
+  const peers = [...peersByKey.values()];
+  const results = await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
     `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
   )));
+  return results.filter((result) => result.status === 'fulfilled').length;
 }
 
 function applyGroupSelection() {
@@ -844,6 +847,10 @@ updateActionBtn?.addEventListener('click', async () => {
 window.api?.onUpdateStatus?.((state) => {
   if (state.status === 'checking' || state.status === 'current' || state.status === 'available' || state.status === 'error') markUpdateCheck();
   renderUpdateStatus(state);
+});
+window.api?.onNetworkGroupsUpdated?.(async () => {
+  networkGroups = await window.api.getNetworkGroups();
+  renderGroups();
 });
 if (themeToggleSidebar) {
   themeToggleSidebar.addEventListener('click', () => {

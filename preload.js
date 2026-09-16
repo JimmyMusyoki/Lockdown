@@ -20,5 +20,6 @@ contextBridge.exposeInMainWorld('api', {
   onNetworkSpeedStage: (callback) => ipcRenderer.on('network-speed-stage', (_event, stage) => callback(stage)),
   getNetworkGroups: () => ipcRenderer.invoke('get-network-groups'),
   saveNetworkGroup: (group) => ipcRenderer.invoke('save-network-group', group),
-  deleteNetworkGroup: (groupId) => ipcRenderer.invoke('delete-network-group', groupId)
+  deleteNetworkGroup: (groupId) => ipcRenderer.invoke('delete-network-group', groupId),
+  onNetworkGroupsUpdated: (callback) => ipcRenderer.on('network-groups-updated', () => callback())
 });
