@@ -338,6 +338,7 @@ app.whenReady().then(() => {
   if (data.network?.agentEnabled !== false && (isBackgroundAgent || !usesBootAgent)) {
     networkAgent.startNetworkAgent({
       getData: store.load,
+      getNetworkGroups: () => store.load().network?.groups || [],
       updateSites,
       updateApps,
       startLock,

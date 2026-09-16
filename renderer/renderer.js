@@ -62,6 +62,7 @@ const groupAppsBtn = document.getElementById('group-apps');
 const groupLockBtn = document.getElementById('group-lock');
 const groupStatus = document.getElementById('group-status');
 const savedPcCount = document.getElementById('saved-pc-count');
+const refreshSavedPcsBtn = document.getElementById('refresh-saved-pcs');
 const savedPcsView = document.getElementById('saved-pcs');
 const savedPcCards = document.getElementById('saved-pc-cards');
 const selectAllSaved = document.getElementById('select-all-saved');
@@ -420,7 +421,12 @@ async function runBulkCommand(devices, command, message) {
   const success = results.filter((result) => result.status === 'fulfilled').length;
   updateSavedSelectionState();
   const failure = results.find((result) => result.status === 'rejected');
-  showToast(success ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}` : failure?.reason?.message || 'Task failed');
+  const failureIndex = results.findIndex((result) => result.status === 'rejected');
+  const failedDevice = failureIndex >= 0 ? devices[failureIndex] : null;
+  const failureMessage = failedDevice
+    ? `${failedDevice.name || failedDevice.ip}: ${failure?.reason?.message || 'Task failed'}`
+    : 'Task failed';
+  showToast(success ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}` : failureMessage);
   if (command !== 'shutdown') refreshSavedPcStatuses(devices);
 }
 
@@ -430,13 +436,14 @@ async function refreshSavedNetwork() {
     networkGroups = latestGroups;
     renderGroups();
   }
-  if (savedNetworkRefreshRunning || !networkGroups.length) return;
+  if (savedNetworkRefreshRunning) return;
   savedNetworkRefreshRunning = true;
   try {
     const devices = await window.api.discoverNetwork();
     discoveredDevices = devices;
     renderDashboardDevices(devices);
     await reconcileNetworkGroups(devices);
+    await synchronizeNetworkGroups();
     renderGroups();
   } catch (_) {
     refreshSavedPcStatuses(savedDevices());
@@ -456,6 +463,7 @@ async function scanNetwork() {
     const devices = await window.api.discoverNetwork();
     await reconcileNetworkGroups(devices);
     renderDevices(devices);
+    await synchronizeNetworkGroups();
     renderGroups();
     showToast('Network scan complete');
   } catch (error) {
@@ -463,6 +471,27 @@ async function scanNetwork() {
   } finally {
     scanNetworkBtn.disabled = false;
     scanNetworkBtn.firstElementChild.textContent = 'Scan network';
+  }
+}
+
+async function refreshSavedPcs() {
+  if (!window.api?.discoverNetwork || !refreshSavedPcsBtn) return;
+  refreshSavedPcsBtn.disabled = true;
+  refreshSavedPcsBtn.firstElementChild.textContent = 'Checking...';
+  try {
+    const devices = await window.api.discoverNetwork();
+    discoveredDevices = devices;
+    renderDashboardDevices(devices);
+    await reconcileNetworkGroups(devices);
+    await synchronizeNetworkGroups();
+    renderDevices(devices);
+    renderGroups();
+    showToast('Saved PC status refreshed');
+  } catch (error) {
+    showToast(`Refresh failed: ${error?.message || 'Check your network connection.'}`);
+  } finally {
+    refreshSavedPcsBtn.disabled = false;
+    refreshSavedPcsBtn.firstElementChild.textContent = 'Refresh';
   }
 }
 
@@ -572,17 +601,56 @@ async function syncNetworkGroup(group) {
   if (!group || !group.devices.length) return;
   const password = await agentSessionPassword();
   if (!password) return;
+  const peers = networkPeers();
+  const results = await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
+    `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
+  )));
+  return results.filter((result) => result.status === 'fulfilled').length;
+}
+
+function networkPeers() {
   const peersByKey = new Map();
   [...discoveredDevices, ...savedDevices()].forEach((device) => {
     if (device.local) return;
     const key = normalizedMac(device.mac) || device.ip;
     if (key) peersByKey.set(key, { ...peersByKey.get(key), ...device });
   });
-  const peers = [...peersByKey.values()];
-  const results = await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
-    `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
+  return [...peersByKey.values()];
+}
+
+function mergeGroupDevices(left, right) {
+  const devices = new Map((left.devices || []).map((device) => [normalizedMac(device.mac) || device.ip, device]));
+  (right.devices || []).forEach((device) => {
+    const key = normalizedMac(device.mac) || device.ip;
+    if (key) devices.set(key, { ...devices.get(key), ...device });
+  });
+  return { ...left, ...right, devices: [...devices.values()] };
+}
+
+async function synchronizeNetworkGroups() {
+  const peers = networkPeers();
+  if (!peers.length) return;
+  const password = agentSessionPassword();
+  if (!password) return;
+  const pulled = await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
+    `${device.ip}:47821`, password, 'get-network-groups', null, 'operator'
   )));
-  return results.filter((result) => result.status === 'fulfilled').length;
+  const mergedGroups = new Map(networkGroups.map((group) => [group.id, group]));
+  pulled.forEach((result) => {
+    if (result.status !== 'fulfilled' || !Array.isArray(result.value)) return;
+    result.value.forEach((group) => {
+      if (!group?.id || !Array.isArray(group.devices)) return;
+      mergedGroups.set(group.id, mergedGroups.has(group.id)
+        ? mergeGroupDevices(mergedGroups.get(group.id), group)
+        : group);
+    });
+  });
+  const merged = [...mergedGroups.values()];
+  if (JSON.stringify(merged) !== JSON.stringify(networkGroups)) {
+    for (const group of merged) await window.api.saveNetworkGroup(group);
+    networkGroups = await window.api.getNetworkGroups();
+  }
+  await Promise.allSettled(merged.map((group) => syncNetworkGroup(group)));
 }
 
 function applyGroupSelection() {
@@ -755,6 +823,7 @@ gamingMode.addEventListener('change', async () => {
   showToast(gamingMode.checked ? 'Gaming apps are now blocked' : 'Gaming app blocking disabled');
 });
 scanNetworkBtn.addEventListener('click', scanNetwork);
+refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);
 addGroupBtn.addEventListener('click', () => {
   editingGroupId = null;
   groupSelect.value = '';

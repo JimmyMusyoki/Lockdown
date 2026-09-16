@@ -86,18 +86,18 @@ function runShutdown() {
   return new Promise((resolve, reject) => {
     const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
     const shutdownPath = path.join(systemRoot, 'System32', 'shutdown.exe');
-    execFile(shutdownPath, ['/s', '/f', '/t', '5'], { windowsHide: true }, (error, _stdout, stderr) => {
+    execFile(shutdownPath, ['/s', '/f', '/t', '5'], { windowsHide: true }, (error, stdout, stderr) => {
       if (!error) {
         resolve({ scheduled: true, delaySeconds: 5 });
         return;
       }
-      const detail = String(stderr || error.message || '').trim();
+      const detail = String(stderr || stdout || error.message || '').trim();
       reject(new Error(detail || `Windows shutdown failed with code ${error.code || 'unknown'}.`));
     });
   });
 }
 
-async function startNetworkAgent({ getData, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
@@ -140,6 +140,7 @@ async function startNetworkAgent({ getData, updateSites, updateApps, startLock, 
         const data = getData();
         result = { blockedSites: data.blockedSites, blockedApps: data.blockedApps, lock: publicLock(data.lock) };
       }
+      else if (body.command === 'get-network-groups') result = getNetworkGroups ? getNetworkGroups() : [];
       else if (body.command === 'update-sites') result = updateSites(body.payload || []);
       else if (body.command === 'update-apps') result = updateApps(body.payload || []);
       else if (body.command === 'start-lock') {
