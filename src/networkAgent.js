@@ -135,6 +135,16 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       }
       pendingNonces.delete(body.nonce);
 
+      if (body.command === 'shutdown') {
+        sendJson(response, 202, { ok: true, data: { scheduled: true, delaySeconds: 5 } });
+        setImmediate(() => {
+          runShutdown().catch((error) => {
+            if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
+          });
+        });
+        return;
+      }
+
       let result;
       if (body.command === 'get-data') {
         const data = getData();
@@ -150,7 +160,6 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       else if (body.command === 'merge-network-group') result = mergeNetworkGroup(body.payload || {});
       else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
       else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };
-      else if (body.command === 'shutdown') result = await runShutdown();
       else {
         sendJson(response, 400, { error: 'Unknown command' });
         return;

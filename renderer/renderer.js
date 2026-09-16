@@ -611,7 +611,8 @@ async function syncNetworkGroup(group) {
 
 function networkPeers() {
   const peersByKey = new Map();
-  [...discoveredDevices, ...savedDevices()].forEach((device) => {
+  const groupedDevices = networkGroups.flatMap((group) => group.devices || []);
+  [...discoveredDevices, ...savedDevices(), ...groupedDevices].forEach((device) => {
     if (device.local) return;
     const key = normalizedMac(device.mac) || device.ip;
     if (key) peersByKey.set(key, { ...peersByKey.get(key), ...device });
@@ -961,6 +962,7 @@ window.api?.getAppVersion?.().then((version) => {
 window.api?.getUpdateStatus?.().then(renderUpdateStatus);
 window.api?.getNetworkGroups?.().then((groups) => { networkGroups = groups; renderGroups(); });
 if (window.api?.getData) loadData();
+refreshSavedNetwork();
 setInterval(refreshLockStatus, 1000);
 setInterval(refreshSavedNetwork, 30000);
 updateAgentSessionStatus();
