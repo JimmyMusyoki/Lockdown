@@ -1,10 +1,11 @@
 const sitesInput = document.getElementById('sites-input');
+const allowedSitesInput = document.getElementById('allowed-sites-input');
 const appsInput = document.getElementById('apps-input');
 const saveSitesBtn = document.getElementById('save-sites');
 const saveAppsBtn = document.getElementById('save-apps');
 const lockMinutesInput = document.getElementById('lock-minutes');
-const lockPasswordInput = document.getElementById('lock-password');
 const startLockBtn = document.getElementById('start-lock');
+const gamingMode = document.getElementById('gaming-mode');
 const lockStatusEl = document.getElementById('lock-status');
 const lockBanner = document.getElementById('lock-banner');
 const sitesCount = document.getElementById('sites-count');
@@ -21,41 +22,46 @@ const updateActionBtn = document.getElementById('update-action');
 const updateProgress = document.getElementById('update-progress');
 const updateProgressBar = document.getElementById('update-progress-bar');
 const updateProgressLabel = document.getElementById('update-progress-label');
-const remoteHostInput = document.getElementById('remote-host');
-const remotePasswordInput = document.getElementById('remote-password');
-const remoteSitesBtn = document.getElementById('remote-sites');
-const remoteAppsBtn = document.getElementById('remote-apps');
-const remoteLockBtn = document.getElementById('remote-lock');
-const remoteConnectBtn = document.getElementById('remote-connect');
-const remoteStatus = document.getElementById('remote-status');
+const agentSessionStatus = document.getElementById('agent-session-status');
 const scanNetworkBtn = document.getElementById('scan-network');
 const deviceList = document.getElementById('device-list');
 const deviceCount = document.getElementById('device-count');
 const groupNameInput = document.getElementById('group-name');
 const saveGroupBtn = document.getElementById('save-group');
+const addGroupBtn = document.getElementById('add-group');
 const groupSelect = document.getElementById('group-select');
+const deviceGroupSelect = document.getElementById('device-group-select');
+const assignDevicesBtn = document.getElementById('assign-devices');
 const loadGroupBtn = document.getElementById('load-group');
+const deleteGroupBtn = document.getElementById('delete-group');
+const groupList = document.getElementById('group-list');
+const groupDialog = document.getElementById('group-dialog');
+const groupDialogCancel = document.getElementById('group-dialog-cancel');
+const groupDevicesHeader = document.getElementById('group-devices-header');
+const backToGroupsBtn = document.getElementById('back-to-groups');
+const deviceStepGroupsBtn = document.getElementById('device-step-groups');
+const deviceStepDevicesBtn = document.getElementById('device-step-devices');
+const deviceStepLocalBtn = document.getElementById('device-step-local');
+const activeGroupName = document.getElementById('active-group-name');
+const activeGroupCount = document.getElementById('active-group-count');
+const groupSelectionHelp = document.getElementById('group-selection-help');
+const focusSelectedBtn = document.getElementById('focus-selected');
+const blockWebsitesSelectedBtn = document.getElementById('block-websites-selected');
+const blockAppsSelectedBtn = document.getElementById('block-apps-selected');
+const shutdownSelectedBtn = document.getElementById('shutdown-selected');
+const openLocalRulesBtn = document.getElementById('open-local-rules');
+const agentPasswordDialog = document.getElementById('agent-password-dialog');
+const agentPasswordDialogInput = document.getElementById('agent-password-dialog-input');
+const agentPasswordCancel = document.getElementById('agent-password-cancel');
+const agentPasswordSubmit = document.getElementById('agent-password-submit');
 const groupSitesBtn = document.getElementById('group-sites');
 const groupAppsBtn = document.getElementById('group-apps');
 const groupLockBtn = document.getElementById('group-lock');
 const groupStatus = document.getElementById('group-status');
 const savedPcCount = document.getElementById('saved-pc-count');
+const savedPcsView = document.getElementById('saved-pcs');
 const savedPcCards = document.getElementById('saved-pc-cards');
 const selectAllSaved = document.getElementById('select-all-saved');
-const bulkTask = document.getElementById('bulk-task');
-const runBulkTaskBtn = document.getElementById('run-bulk-task');
-const deviceDetail = document.getElementById('device-detail');
-const detailName = document.getElementById('detail-name');
-const detailAddress = document.getElementById('detail-address');
-const detailOnlineDot = document.getElementById('detail-online-dot');
-const detailOnline = document.getElementById('detail-online');
-const detailPlatform = document.getElementById('detail-platform');
-const detailActivity = document.getElementById('detail-activity');
-const detailSitesBtn = document.getElementById('detail-sites');
-const detailRefreshBtn = document.getElementById('detail-refresh');
-const detailShutdownBtn = document.getElementById('detail-shutdown');
-const closeDetailBtn = document.getElementById('close-device-detail');
-let selectedDevice = null;
 const speedTestBtn = document.getElementById('speed-test');
 const speedDownload = document.getElementById('speed-download');
 const speedLatency = document.getElementById('speed-latency');
@@ -73,13 +79,26 @@ const governorPhase = document.getElementById('governor-phase');
 const progressLabel = document.getElementById('progress-label');
 const progressBar = document.getElementById('progress-bar');
 const dialTicks = document.getElementById('dial-ticks');
+const usageChart = document.getElementById('usage-chart');
+const usageEmpty = document.getElementById('usage-empty');
+const usageCurrent = document.getElementById('usage-current');
+const usageUpdated = document.getElementById('usage-updated');
+const dashboardOnline = document.getElementById('dashboard-online');
+const dashboardOffline = document.getElementById('dashboard-offline');
+const dashboardDeviceList = document.getElementById('dashboard-device-list');
 let speedRefreshTimer;
 let discoveredDevices = [];
+let usageReadings = [];
 let networkGroups = [];
 let activeTab = 'overview';
 let agentSessionExpiresAt = 0;
 let savedNetworkRefreshRunning = false;
 let selectedSavedKeys = new Set();
+let passwordDialogResolve;
+let agentPasswordValue = '';
+let editingGroupId = null;
+let visibleGroupId = null;
+const gamingApps = ['steam.exe', 'epicgameslauncher.exe', 'riotclientservices.exe', 'battle.net.exe'];
 
 for (let index = 0; index <= 50; index += 1) {
   const tick = document.createElement('i');
@@ -95,17 +114,65 @@ function showToast(message) {
 }
 
 function agentSessionPassword(promptForPassword = true) {
-  if (Date.now() >= agentSessionExpiresAt) {
-    agentSessionExpiresAt = 0;
-    remotePasswordInput.value = '';
+  if (!agentPasswordValue && promptForPassword) {
+    return requestAgentPassword();
   }
-  if (!remotePasswordInput.value && promptForPassword) {
-    const password = window.prompt('Enter the agent password. This session lasts two minutes.');
-    if (!password) return null;
-    remotePasswordInput.value = password;
-    agentSessionExpiresAt = Date.now() + 2 * 60 * 1000;
+  return agentPasswordValue || null;
+}
+
+async function unlockAgentSession() {
+  const password = agentPasswordValue || await requestAgentPassword();
+  if (!password) return false;
+  agentPasswordValue = password;
+  updateAgentSessionStatus();
+  showToast('Authentication accepted');
+  return true;
+}
+
+function updateAgentSessionStatus() {
+  if (!agentSessionStatus) return;
+  if (!agentPasswordValue) {
+    agentSessionStatus.textContent = 'Locked';
+    agentSessionStatus.classList.remove('connected');
+    return;
   }
-  return remotePasswordInput.value || null;
+  agentSessionStatus.textContent = 'Authenticated';
+  agentSessionStatus.classList.add('connected');
+}
+
+function requestAgentPassword() {
+  return new Promise((resolve) => {
+    passwordDialogResolve = resolve;
+    agentPasswordDialogInput.value = '';
+    agentPasswordDialog.hidden = false;
+    agentPasswordDialogInput.removeAttribute('readonly');
+    agentPasswordDialogInput.disabled = false;
+    window.setTimeout(() => {
+      agentPasswordDialogInput.focus();
+      agentPasswordDialogInput.select();
+    }, 0);
+  });
+}
+
+async function requireAuthentication() {
+  const password = await requestAgentPassword();
+  if (!password) return null;
+  agentPasswordValue = password;
+  updateAgentSessionStatus();
+  return password;
+}
+
+function finishPasswordDialog(password) {
+  agentPasswordDialog.hidden = true;
+  const resolve = passwordDialogResolve;
+  passwordDialogResolve = null;
+  if (!password) {
+    resolve?.(null);
+    return;
+  }
+  agentPasswordValue = password;
+  updateAgentSessionStatus();
+  resolve?.(password);
 }
 
 function updateCounts() {
@@ -156,6 +223,7 @@ function escapeHtml(value) {
 
 function renderDevices(devices) {
   discoveredDevices = devices;
+  renderDashboardDevices(devices);
   deviceCount.textContent = `${devices.length} device${devices.length === 1 ? '' : 's'} found`;
   if (!devices.length) {
     deviceList.innerHTML = '<div class="empty-devices">No devices were found in the current network table.</div>';
@@ -164,54 +232,82 @@ function renderDevices(devices) {
   deviceList.innerHTML = devices.map((device) => {
     const displayName = device.nameAvailable ? escapeHtml(device.name) : 'Name unavailable';
     const nameNote = device.nameAvailable ? 'PC name' : 'Enable Network Discovery on this PC';
-    return `<div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><button class="device-open" data-open-device="${escapeHtml(device.ip)}"><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><span class="agent-badge">View details →</span></button></div>`;
+    return `<div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span></div>`;
   }).join('');
-  deviceList.querySelectorAll('[data-open-device]').forEach((button) => button.addEventListener('click', () => openDeviceDetails(button.dataset.openDevice)));
 }
 
-async function openDeviceDetails(ip) {
-  selectedDevice = discoveredDevices.find((device) => device.ip === ip);
-  if (!selectedDevice) return;
-  detailName.textContent = selectedDevice.name || `Device ${selectedDevice.ip}`;
-  detailAddress.textContent = `${selectedDevice.ip} · ${selectedDevice.mac || 'MAC unavailable'}`;
-  detailShutdownBtn.disabled = Boolean(selectedDevice.local);
-  deviceDetail.classList.remove('hidden');
-  await refreshDeviceDetails();
-  deviceDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-async function refreshDeviceDetails() {
-  if (!selectedDevice) return;
-  const password = agentSessionPassword(false);
-  if (!password) {
-    detailOnline.textContent = 'Enter the agent password above';
+function renderDashboardDevices(devices) {
+  const online = devices.filter((device) => device.online !== false).length;
+  dashboardOnline.textContent = online;
+  dashboardOffline.textContent = Math.max(0, devices.length - online);
+  if (!devices.length) {
+    dashboardDeviceList.innerHTML = '<span class="chart-empty">Scan Network to see devices here.</span>';
     return;
   }
-  try {
-    const status = await window.api.remoteCommand(`${selectedDevice.ip}:47821`, password, 'get-status');
-    detailOnline.textContent = status.online ? 'Online' : 'Offline';
-    detailOnlineDot.classList.toggle('local', status.online);
-    detailPlatform.textContent = `${status.hostname} · ${status.platform}`;
-    const activity = await window.api.remoteCommand(`${selectedDevice.ip}:47821`, password, 'get-activity');
-    renderActivity(activity.entries || []);
-  } catch (error) {
-    detailOnline.textContent = 'Offline or unreachable';
-    detailOnlineDot.classList.remove('local');
-    detailPlatform.textContent = '';
-    detailActivity.innerHTML = '<div class="empty-devices">The agent could not be reached. Check the IP, password, and firewall.</div>';
-  }
+  dashboardDeviceList.innerHTML = devices.slice(0, 4).map((device) => `<div class="dashboard-device"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><strong>${escapeHtml(device.name || device.ip)}</strong><span>${device.online !== false ? 'Online' : 'Offline'}</span></div>`).join('');
 }
 
-function renderActivity(entries) {
-  if (!entries.length) {
-    detailActivity.innerHTML = '<div class="empty-devices">No Lockdown activity has been recorded yet.</div>';
-    return;
+function drawUsageChart() {
+  const context = usageChart.getContext('2d');
+  const width = usageChart.width;
+  const height = usageChart.height;
+  context.clearRect(0, 0, width, height);
+  context.strokeStyle = '#e1e8e2';
+  context.lineWidth = 1;
+  for (let index = 1; index < 4; index += 1) {
+    const y = (height / 4) * index;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
   }
-  detailActivity.innerHTML = entries.map((entry) => `<div class="activity-row"><span class="activity-dot"></span><div><strong>${escapeHtml(entry.title)}</strong><small>${escapeHtml(entry.detail || '')}</small></div><time>${new Date(entry.timestamp).toLocaleString()}</time></div>`).join('');
+  if (!usageReadings.length) return;
+  const max = Math.max(10, ...usageReadings.flatMap((reading) => [reading.download, reading.upload]));
+  const point = (index, value) => ({ x: (index / Math.max(usageReadings.length - 1, 1)) * width, y: height - (value / max) * (height - 18) - 8 });
+  [['download', '#4775b7'], ['upload', '#1f8063']].forEach(([key, color]) => {
+    context.strokeStyle = color;
+    context.lineWidth = 3;
+    context.beginPath();
+    usageReadings.forEach((reading, index) => {
+      const position = point(index, reading[key]);
+      if (index === 0) context.moveTo(position.x, position.y);
+      else context.lineTo(position.x, position.y);
+    });
+    context.stroke();
+  });
+  usageEmpty.classList.add('hidden');
+}
+
+function recordUsage(result) {
+  usageReadings = [...usageReadings, { download: Number(result.downloadMbps) || 0, upload: Number(result.uploadMbps) || 0 }].slice(-12);
+  usageCurrent.textContent = `${result.downloadMbps} Mbps`;
+  usageUpdated.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  drawUsageChart();
 }
 
 function renderGroups() {
-  groupSelect.innerHTML = '<option value="">Choose a saved group</option>' + networkGroups.map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)} (${group.devices.length})</option>`).join('');
+  const options = '<option value="">Choose a saved group</option>' + networkGroups.map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)} (${group.devices.length})</option>`).join('');
+  groupSelect.innerHTML = options;
+  deviceGroupSelect.innerHTML = options;
+  if (visibleGroupId && !networkGroups.some((group) => group.id === visibleGroupId)) visibleGroupId = null;
+  groupList.innerHTML = networkGroups.length
+    ? networkGroups.map((group) => `<article class="group-card"><div><strong>${escapeHtml(group.name)}</strong><span>${group.devices.length} device${group.devices.length === 1 ? '' : 's'}</span></div><div class="group-card-actions"><button data-group-view="${escapeHtml(group.id)}">Manage devices</button><button data-group-edit="${escapeHtml(group.id)}">Edit name</button><button class="danger-button" data-group-delete="${escapeHtml(group.id)}">Delete</button></div></article>`).join('')
+    : '<div class="empty-devices">No groups created yet. Add a group to begin.</div>';
+  const selectedGroup = networkGroups.find((group) => group.id === visibleGroupId);
+  const deviceWorkspace = document.querySelector('#saved-pcs .bulk-panel');
+  groupList.classList.toggle('hidden', Boolean(selectedGroup));
+  groupDevicesHeader.classList.toggle('hidden', !selectedGroup);
+  deviceWorkspace.classList.toggle('hidden', !selectedGroup);
+  if (selectedGroup) {
+    activeGroupName.textContent = selectedGroup.name;
+    activeGroupCount.textContent = `${selectedGroup.devices.length} device${selectedGroup.devices.length === 1 ? '' : 's'}`;
+    groupSelectionHelp.textContent = 'Select one PC, several PCs, or every PC in this group.';
+  } else {
+    groupSelectionHelp.textContent = 'Open a group to manage its devices.';
+  }
+  groupList.querySelectorAll('[data-group-view]').forEach((button) => button.addEventListener('click', () => viewGroupDevices(button.dataset.groupView)));
+  groupList.querySelectorAll('[data-group-edit]').forEach((button) => button.addEventListener('click', () => editGroup(button.dataset.groupEdit)));
+  groupList.querySelectorAll('[data-group-delete]').forEach((button) => button.addEventListener('click', () => deleteGroupById(button.dataset.groupDelete)));
   renderSavedPcCards();
 }
 
@@ -237,25 +333,58 @@ function isCurrentDevice(device) {
 
 function selectedSavedDevices() {
   const selectedKeys = new Set([...savedPcCards.querySelectorAll('[data-saved-select]:checked')].map((input) => input.dataset.savedSelect));
-  return savedDevices().filter((device) => selectedKeys.has(savedDeviceKey(device)));
+  const selectedGroup = networkGroups.find((group) => group.id === visibleGroupId);
+  return (selectedGroup?.devices || []).filter((device) => selectedKeys.has(savedDeviceKey(device)));
 }
 
 function renderSavedPcCards() {
-  const devices = savedDevices();
-  savedPcCount.textContent = `${devices.length} saved`;
+  const selectedGroup = networkGroups.find((group) => group.id === visibleGroupId);
+  const devices = selectedGroup ? selectedGroup.devices.map((device) => ({
+    ...device,
+    groups: device.groups?.length ? device.groups : [selectedGroup.name]
+  })) : [];
+  savedPcCount.textContent = `${networkGroups.length} group${networkGroups.length === 1 ? '' : 's'}`;
   if (!devices.length) {
-    savedPcCards.innerHTML = '<div class="empty-devices">Save a group to see its PCs here.</div>';
+    savedPcCards.innerHTML = '<div class="empty-devices">This group has no devices yet. Go to Network to scan and add devices.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-view="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Lock sites</button><button data-card-lock="${escapeHtml(device.ip)}">Lock PC</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`).join('');
-  savedPcCards.querySelectorAll('[data-card-view]').forEach((button) => button.addEventListener('click', () => openSavedDevice(button.dataset.cardView)));
+  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`).join('');
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
+  savedPcCards.querySelectorAll('[data-card-apps]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardApps, 'update-apps')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
   savedPcCards.querySelectorAll('[data-card-shutdown]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardShutdown, 'shutdown')));
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => input.addEventListener('change', updateSavedSelectionState));
   updateSavedSelectionState();
   updateSavedDiscoveryStatuses(devices);
   refreshSavedPcStatuses(devices);
+}
+
+function viewGroupDevices(groupId) {
+  visibleGroupId = groupId;
+  setDeviceStep('devices');
+  renderGroups();
+  savedPcCards.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function setDeviceStep(step) {
+  document.querySelector('.content-shell').dataset.deviceStep = step;
+  [deviceStepGroupsBtn, deviceStepDevicesBtn, deviceStepLocalBtn].forEach((button) => button.classList.toggle('active', button.id === `device-step-${step}`));
+}
+
+function closeGroupEditor() {
+  groupDialog.hidden = true;
+}
+
+function editGroup(groupId) {
+  groupSelect.value = groupId;
+  applyGroupSelection();
+  groupDialog.hidden = false;
+  groupNameInput.focus();
+}
+
+async function deleteGroupById(groupId) {
+  groupSelect.value = groupId;
+  await deleteSelectedGroup();
 }
 
 function updateSavedDiscoveryStatuses(devices) {
@@ -274,18 +403,14 @@ function updateSavedSelectionState() {
   const selected = inputs.filter((input) => input.checked).length;
   selectAllSaved.checked = inputs.length > 0 && selected === inputs.length;
   selectAllSaved.indeterminate = selected > 0 && selected < inputs.length;
-  runBulkTaskBtn.textContent = selected ? `Run task on ${selected} selected` : 'Run task on selected';
-}
-
-function openSavedDevice(ip) {
-  const device = savedDevices().find((item) => item.ip === ip);
-  if (!device) return;
-  if (!discoveredDevices.some((item) => item.ip === ip)) discoveredDevices.push(device);
-  openDeviceDetails(ip);
+  groupSelectionHelp.textContent = selected
+    ? `${selected} PC${selected === 1 ? '' : 's'} selected — choose an action below.`
+    : 'Select one PC, several PCs, or every PC in this group.';
+  [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = selected === 0; });
 }
 
 async function refreshSavedPcStatuses(devices) {
-  const password = agentSessionPassword(false);
+  const password = await agentSessionPassword(false);
   if (!password) return;
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
@@ -317,17 +442,18 @@ async function runBulkCommand(devices, command, message) {
     return;
   }
   const isAdmin = command === 'shutdown';
-  const password = agentSessionPassword();
+  const password = await requireAuthentication();
   if (!devices.length || !password) {
     showToast('Enter the agent password first');
     return;
   }
   const payload = command === 'update-sites' ? sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'update-apps' ? appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'start-lock' ? { minutes: parseInt(lockMinutesInput.value, 10) || 60 } : null;
-  runBulkTaskBtn.disabled = true;
+  [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = true; });
   const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator')));
   const success = results.filter((result) => result.status === 'fulfilled').length;
-  runBulkTaskBtn.disabled = false;
-  showToast(`${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}`);
+  updateSavedSelectionState();
+  const failure = results.find((result) => result.status === 'rejected');
+  showToast(success ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}` : failure?.reason?.message || 'Task failed');
   refreshSavedPcStatuses(devices);
 }
 
@@ -342,6 +468,7 @@ async function refreshSavedNetwork() {
   try {
     const devices = await window.api.discoverNetwork();
     discoveredDevices = devices;
+    renderDashboardDevices(devices);
     await reconcileNetworkGroups(devices);
     renderGroups();
   } catch (_) {
@@ -352,6 +479,10 @@ async function refreshSavedNetwork() {
 }
 
 async function scanNetwork() {
+  if (!window.api?.discoverNetwork) {
+    showToast('Network scan is only available in the Electron app.');
+    return;
+  }
   scanNetworkBtn.disabled = true;
   scanNetworkBtn.firstElementChild.textContent = 'Scanning...';
   try {
@@ -361,7 +492,7 @@ async function scanNetwork() {
     renderGroups();
     showToast('Network scan complete');
   } catch (error) {
-    showToast(`Network scan failed: ${error.message}`);
+    showToast(`Network scan failed: ${error?.message || 'Check your network connection and try again.'}`);
   } finally {
     scanNetworkBtn.disabled = false;
     scanNetworkBtn.firstElementChild.textContent = 'Scan network';
@@ -375,6 +506,7 @@ async function runSpeedTest() {
     const result = await window.api.networkSpeedTest();
     speedDownload.textContent = result.downloadMbps;
     speedLatency.textContent = result.latencyMs;
+    recordUsage(result);
     showToast('Internet speed test complete');
   } catch (error) {
     showToast(`Speed test failed: ${error.message}`);
@@ -408,6 +540,7 @@ async function runGovernorTest() {
     governorTitle.textContent = 'Connection test complete';
     governorMessage.textContent = 'Your network telemetry is ready.';
     speedLiveState.textContent = 'CONNECTED';
+    recordUsage(result);
   } catch (error) {
     speedLiveState.textContent = 'UNAVAILABLE';
     governorPhase.textContent = 'ERROR';
@@ -421,7 +554,7 @@ async function runGovernorTest() {
   }
 }
 
-window.api.onNetworkSpeedStage((stage) => {
+window.api?.onNetworkSpeedStage?.((stage) => {
   if (stage === 'upload') {
     governorPhase.textContent = 'UPLOAD';
     progressLabel.textContent = 'MEASURING UPLOAD';
@@ -432,22 +565,46 @@ window.api.onNetworkSpeedStage((stage) => {
 });
 
 async function saveGroup() {
-  const devices = selectedDevices();
+  if (!await requireAuthentication()) return;
   const name = groupNameInput.value.trim();
-  if (!name || !devices.length) {
-    showToast('Enter a group name and select at least one device');
+  const existingGroup = networkGroups.find((group) => group.id === editingGroupId);
+  const devices = existingGroup ? existingGroup.devices : [];
+  if (!name) {
+    showToast('Enter a group name');
     return;
   }
-  networkGroups = await window.api.saveNetworkGroup({ name, devices });
-  await syncNetworkGroup(networkGroups[networkGroups.length - 1]);
+  const groupId = editingGroupId || undefined;
+  networkGroups = await window.api.saveNetworkGroup({ id: groupId, name, devices });
+  await syncNetworkGroup(networkGroups.find((group) => group.id === groupId) || networkGroups[networkGroups.length - 1]);
   renderGroups();
   groupNameInput.value = '';
+  editingGroupId = null;
+  saveGroupBtn.textContent = 'Add group';
+  closeGroupEditor();
   showToast(`Group “${name}” saved`);
 }
 
+async function assignSelectedDevices() {
+  if (!await requireAuthentication()) return;
+  const devices = selectedDevices();
+  const group = networkGroups.find((item) => item.id === deviceGroupSelect.value);
+  if (!devices.length || !group) {
+    showToast('Select devices and choose a group first');
+    return;
+  }
+  const existing = new Map(group.devices.map((device) => [normalizedMac(device.mac) || device.ip, device]));
+  devices.forEach((device) => existing.set(normalizedMac(device.mac) || device.ip, device));
+  networkGroups = await window.api.saveNetworkGroup({ ...group, devices: [...existing.values()] });
+  await syncNetworkGroup(networkGroups.find((item) => item.id === group.id));
+  renderGroups();
+  groupStatus.textContent = `${devices.length} device${devices.length === 1 ? '' : 's'} saved to ${group.name}.`;
+  showToast('Devices added to group');
+}
+
 async function syncNetworkGroup(group) {
-  const password = agentSessionPassword();
-  if (!password || !group) return;
+  if (!group || !group.devices.length) return;
+  const password = await agentSessionPassword();
+  if (!password) return;
   const peers = discoveredDevices.filter((device) => !device.local);
   await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
     `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
@@ -457,6 +614,9 @@ async function syncNetworkGroup(group) {
 function applyGroupSelection() {
   const group = networkGroups.find((item) => item.id === groupSelect.value);
   if (!group) return;
+  editingGroupId = group.id;
+  groupNameInput.value = group.name;
+  saveGroupBtn.textContent = 'Save group changes';
   const knownIps = new Set(discoveredDevices.map((device) => device.ip));
   const missingDevices = group.devices.filter((device) => !knownIps.has(device.ip));
   if (missingDevices.length) renderDevices([...discoveredDevices, ...missingDevices]);
@@ -467,77 +627,50 @@ function applyGroupSelection() {
   groupStatus.textContent = `${group.devices.length} devices selected`;
 }
 
+async function deleteSelectedGroup() {
+  if (!await requireAuthentication()) return;
+  const group = networkGroups.find((item) => item.id === groupSelect.value);
+  if (!group) {
+    showToast('Choose a group to delete');
+    return;
+  }
+  if (!confirm(`Delete group “${group.name}”?`)) return;
+  networkGroups = await window.api.deleteNetworkGroup(group.id);
+  groupNameInput.value = '';
+  editingGroupId = null;
+  saveGroupBtn.textContent = 'Add group';
+  closeGroupEditor();
+  renderGroups();
+  showToast('Group deleted');
+}
+
 async function sendGroup(command, payload, message) {
   const devices = selectedDevices();
-  const password = agentSessionPassword();
+  const password = await agentSessionPassword();
   if (!devices.length || !password) {
     showToast('Select devices and enter the agent password first');
     return;
   }
   groupStatus.textContent = `Sending to ${devices.length} device${devices.length === 1 ? '' : 's'}...`;
-  const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload)));
+  const role = command === 'shutdown' ? 'admin' : 'operator';
+  const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload, role)));
   const success = results.filter((result) => result.status === 'fulfilled').length;
   groupStatus.textContent = `${success}/${devices.length} devices accepted the command`;
-  showToast(`${message} on ${success} device${success === 1 ? '' : 's'}`);
+  const failure = results.find((result) => result.status === 'rejected');
+  showToast(success ? `${message} on ${success} device${success === 1 ? '' : 's'}` : failure?.reason?.message || 'Task failed');
 }
-async function sendSingleDevice(command, payload, message) {
-  const isAdmin = command === 'shutdown';
-  if (isAdmin && selectedDevice?.local) {
-    showToast('This computer cannot be shut down remotely.');
-    return;
-  }
-  const password = agentSessionPassword();
-  if (!selectedDevice || !password) {
-    showToast('Select a device and enter the agent password first');
-    return;
-  }
-  detailSitesBtn.disabled = true;
-  detailShutdownBtn.disabled = true;
-  try {
-    await window.api.remoteCommand(`${selectedDevice.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator');
-    showToast(message);
-    await refreshDeviceDetails();
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    detailSitesBtn.disabled = false;
-    detailShutdownBtn.disabled = false;
-  }
-}
-
-async function sendRemote(command, payload, successMessage) {
-  const host = remoteHostInput.value.trim();
-  const password = agentSessionPassword();
-  if (!host || !password) {
-    showToast('Enter the remote address and password first');
-    return;
-  }
-  const buttons = [remoteSitesBtn, remoteAppsBtn, remoteLockBtn, remoteConnectBtn];
-  buttons.forEach((button) => { button.disabled = true; });
-  remoteStatus.textContent = 'Sending...';
-  try {
-    await window.api.remoteCommand(host, password, command, payload);
-    remoteStatus.textContent = 'Connected';
-    remoteStatus.classList.add('connected');
-    showToast(successMessage);
-  } catch (error) {
-    remoteStatus.textContent = 'Connection failed';
-    remoteStatus.classList.remove('connected');
-    showToast(error.message);
-  } finally {
-    buttons.forEach((button) => { button.disabled = false; });
-  }
-}
-
 async function loadData() {
   const data = await window.api.getData();
   sitesInput.value = data.blockedSites.join('\n');
+  allowedSitesInput.value = (data.allowedSites || []).join('\n');
   appsInput.value = data.blockedApps.join('\n');
+  gamingMode.checked = gamingApps.every((app) => data.blockedApps.some((blockedApp) => blockedApp.toLowerCase() === app));
   updateCounts();
   await refreshLockStatus();
 }
 
 async function refreshLockStatus() {
+  if (!window.api?.getLockStatus) return;
   const { locked, remainingMs } = await window.api.getLockStatus();
   if (locked) {
     const mins = Math.ceil(remainingMs / 60000);
@@ -580,22 +713,23 @@ function setActiveTab(id) {
   });
   document.querySelectorAll('.nav-item').forEach((item) => {
     const navId = item.getAttribute('href').slice(1);
-    const mappedId = navId === 'apps' ? 'applications' : navId === 'speed-view' ? 'speed-test' : navId;
-    item.classList.toggle('active', mappedId === activeTab);
+    item.classList.toggle('active', navId === activeTab);
   });
-  if (activeTab === 'speed-test') {
-    clearInterval(speedRefreshTimer);
-    runGovernorTest();
-    speedRefreshTimer = setInterval(runGovernorTest, 30000);
-  } else {
-    clearInterval(speedRefreshTimer);
+  clearInterval(speedRefreshTimer);
+  if (activeTab === 'network') scanNetworkBtn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (activeTab === 'devices') {
+    setDeviceStep('groups');
+    savedPcsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
 saveSitesBtn.addEventListener('click', async () => {
+  if (!await requireAuthentication()) return;
   const sites = sitesInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
+  const allowedSites = allowedSitesInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
   try {
     await window.api.updateSites(sites);
+    await window.api.updateAllowedSites(allowedSites);
     updateCounts();
     showToast('Website block list saved');
   } catch (err) {
@@ -604,6 +738,7 @@ saveSitesBtn.addEventListener('click', async () => {
 });
 
 saveAppsBtn.addEventListener('click', async () => {
+  if (!await requireAuthentication()) return;
   const apps = appsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
   try {
     await window.api.updateApps(apps);
@@ -615,50 +750,95 @@ saveAppsBtn.addEventListener('click', async () => {
 });
 
 startLockBtn.addEventListener('click', async () => {
+  if (!await requireAuthentication()) return;
   const minutes = parseInt(lockMinutesInput.value, 10) || 60;
-  const password = lockPasswordInput.value || null;
   if (!confirm(`Lock the block list for ${minutes} minutes? You will NOT be able to undo this early.`)) return;
-  await window.api.startLock(minutes, password);
+  await window.api.startLock(minutes);
   await refreshLockStatus();
   showToast('Focus session started');
 });
 
 sitesInput.addEventListener('input', updateCounts);
 appsInput.addEventListener('input', updateCounts);
-remoteSitesBtn.addEventListener('click', () => sendRemote('update-sites', sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'Website list sent'));
-remoteAppsBtn.addEventListener('click', () => sendRemote('update-apps', appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'App list sent'));
-remoteLockBtn.addEventListener('click', () => sendRemote('start-lock', { minutes: parseInt(lockMinutesInput.value, 10) || 60 }, 'Remote lock started'));
-remoteConnectBtn.addEventListener('click', () => sendRemote('get-data', null, 'Remote computer connected'));
+gamingMode.addEventListener('change', async () => {
+  if (!await requireAuthentication()) {
+    gamingMode.checked = !gamingMode.checked;
+    return;
+  }
+  const apps = appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean);
+  const updatedApps = gamingMode.checked
+    ? [...new Set([...apps, ...gamingApps])]
+    : apps.filter((app) => !gamingApps.includes(app.toLowerCase()));
+  appsInput.value = updatedApps.join('\n');
+  await window.api.updateApps(updatedApps);
+  updateCounts();
+  showToast(gamingMode.checked ? 'Gaming apps are now blocked' : 'Gaming app blocking disabled');
+});
 scanNetworkBtn.addEventListener('click', scanNetwork);
+addGroupBtn.addEventListener('click', () => {
+  editingGroupId = null;
+  groupSelect.value = '';
+  groupNameInput.value = '';
+  saveGroupBtn.textContent = 'Add group';
+  groupDialog.hidden = false;
+  groupNameInput.focus();
+});
 saveGroupBtn.addEventListener('click', saveGroup);
+assignDevicesBtn.addEventListener('click', assignSelectedDevices);
 loadGroupBtn.addEventListener('click', applyGroupSelection);
-groupSitesBtn.addEventListener('click', () => sendGroup('update-sites', sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'Website list sent'));
-groupAppsBtn.addEventListener('click', () => sendGroup('update-apps', appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'App list sent'));
-groupLockBtn.addEventListener('click', () => sendGroup('start-lock', { minutes: parseInt(lockMinutesInput.value, 10) || 60 }, 'Group lock started'));
-runBulkTaskBtn.addEventListener('click', () => {
+deleteGroupBtn.addEventListener('click', deleteSelectedGroup);
+groupDialogCancel.addEventListener('click', closeGroupEditor);
+backToGroupsBtn.addEventListener('click', () => { visibleGroupId = null; setDeviceStep('groups'); renderGroups(); });
+deviceStepGroupsBtn.addEventListener('click', () => { visibleGroupId = null; setDeviceStep('groups'); renderGroups(); });
+deviceStepDevicesBtn.addEventListener('click', () => {
+  if (!visibleGroupId) return showToast('Choose a group first');
+  setDeviceStep('devices');
+  renderGroups();
+});
+deviceStepLocalBtn.addEventListener('click', () => {
+  setDeviceStep('local');
+  savedPcsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+focusSelectedBtn.addEventListener('click', () => {
+  const devices = selectedSavedDevices();
+  if (!devices.length) return showToast('Select at least one device');
+  runBulkCommand(devices, 'start-lock', 'Focus started');
+});
+blockWebsitesSelectedBtn.addEventListener('click', () => {
+  const devices = selectedSavedDevices();
+  if (!devices.length) return showToast('Select at least one device');
+  runBulkCommand(devices, 'update-sites', 'Website block sent');
+});
+blockAppsSelectedBtn.addEventListener('click', () => {
+  const devices = selectedSavedDevices();
+  if (!devices.length) return showToast('Select at least one device');
+  runBulkCommand(devices, 'update-apps', 'Application block sent');
+});
+shutdownSelectedBtn.addEventListener('click', () => {
   const devices = selectedSavedDevices();
   if (!devices.length) {
     showToast('Select at least one saved PC');
     return;
   }
-  if (bulkTask.value === 'shutdown' && !confirm(`Shut down all ${devices.length} saved PCs?`)) return;
-  runBulkCommand(devices, bulkTask.value, 'Task completed');
+  if (!confirm(`Shut down ${devices.length} selected PC${devices.length === 1 ? '' : 's'}? Unsaved work on those computers may be lost.`)) return;
+  runBulkCommand(devices, 'shutdown', 'Shutdown sent');
+});
+openLocalRulesBtn.addEventListener('click', () => {
+  setDeviceStep('local');
+  document.getElementById('websites').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 selectAllSaved.addEventListener('change', () => {
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => { input.checked = selectAllSaved.checked; });
   updateSavedSelectionState();
 });
-closeDetailBtn.addEventListener('click', () => { deviceDetail.classList.add('hidden'); selectedDevice = null; });
-detailRefreshBtn.addEventListener('click', refreshDeviceDetails);
-detailSitesBtn.addEventListener('click', async () => {
-  if (!selectedDevice) return;
-  await sendSingleDevice('update-sites', sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean), 'Website list sent to this PC');
-});
-detailShutdownBtn.addEventListener('click', async () => {
-  if (!selectedDevice || !confirm(`Shut down ${selectedDevice.name || selectedDevice.ip}?`)) return;
-  await sendSingleDevice('shutdown', null, 'Shutdown command sent');
+agentPasswordSubmit.addEventListener('click', () => finishPasswordDialog(agentPasswordDialogInput.value));
+agentPasswordCancel.addEventListener('click', () => finishPasswordDialog(null));
+agentPasswordDialogInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') finishPasswordDialog(agentPasswordDialogInput.value);
+  if (event.key === 'Escape') finishPasswordDialog(null);
 });
 speedTestBtn.addEventListener('click', runSpeedTest);
+document.querySelectorAll('[data-go-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.goTab)));
 governorTestBtn.addEventListener('click', runGovernorTest);
 checkUpdatesBtn.addEventListener('click', async () => {
   markUpdateCheck();
@@ -675,22 +855,22 @@ automaticUpdates.addEventListener('change', () => {
   window.localStorage.setItem('lockdown-automatic-updates', automaticUpdates.checked ? 'on' : 'off');
   window.api.setAutomaticUpdates(automaticUpdates.checked);
 });
-window.api.onUpdateStatus((state) => {
+window.api?.onUpdateStatus?.((state) => {
   if (state.status === 'checking' || state.status === 'current' || state.status === 'available' || state.status === 'error') markUpdateCheck();
   renderUpdateStatus(state);
 });
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', (event) => {
   event.preventDefault();
   const navId = item.getAttribute('href').slice(1);
-  const tabId = navId === 'apps' ? 'applications' : navId === 'speed-view' ? 'speed-test' : navId;
-  setActiveTab(tabId);
+  setActiveTab(navId);
 }));
 setActiveTab('overview');
 automaticUpdates.checked = window.localStorage.getItem('lockdown-automatic-updates') !== 'off';
-window.api.setAutomaticUpdates(automaticUpdates.checked);
-window.api.getAppVersion().then((version) => { appVersion.textContent = `v${version}`; });
-window.api.getUpdateStatus().then(renderUpdateStatus);
-window.api.getNetworkGroups().then((groups) => { networkGroups = groups; renderGroups(); });
-loadData();
-setInterval(refreshLockStatus, 5000);
+window.api?.setAutomaticUpdates?.(automaticUpdates.checked);
+window.api?.getAppVersion?.().then((version) => { appVersion.textContent = `v${version}`; });
+window.api?.getUpdateStatus?.().then(renderUpdateStatus);
+window.api?.getNetworkGroups?.().then((groups) => { networkGroups = groups; renderGroups(); });
+if (window.api?.getData) loadData();
+setInterval(refreshLockStatus, 1000);
 setInterval(refreshSavedNetwork, 30000);
+updateAgentSessionStatus();

@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const networkDiscovery = require('./src/networkDiscovery');
 const networkSpeedTest = require('./src/networkSpeedTest');
 const windowsPermissions = require('./src/windowsPermissions');
+const { normalizeList, normalizeDuration } = require('./src/inputValidation');
 
 const appIcon = path.join(__dirname, 'renderer', 'spacecraft.png');
 
@@ -207,21 +208,38 @@ function startWatchdog() {
   watchdogTimer = setInterval(() => {
     const data = store.load();
     if (data.blockedSites.length > 0 || lockManager.isLocked(data.lock)) {
-      hosts.applyBlockedSites(data.blockedSites);
+      const allowedSites = data.allowedSites || [];
+      hosts.applyBlockedSites(data.blockedSites.filter((site) => !allowedSites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
     }
   }, 5000);
 }
 
 function updateSites(sites) {
+  sites = normalizeList(sites);
   const data = store.load();
   data.blockedSites = sites;
   store.save(data);
-  hosts.applyBlockedSites(sites);
+  hosts.applyBlockedSites(sites.filter((site) => !(data.allowedSites || []).some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
   recordActivity('Website block list updated', `${sites.length} site${sites.length === 1 ? '' : 's'}`);
   return data;
 }
 
+function updateAllowedSites(sites) {
+  sites = normalizeList(sites);
+  const data = store.load();
+  data.allowedSites = sites;
+  store.save(data);
+  hosts.applyBlockedSites((data.blockedSites || []).filter((site) => !sites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+  return data;
+}
+
+function effectiveBlockedSites(data) {
+  const allowed = new Set((data.allowedSites || []).map((site) => site.toLowerCase()));
+  return (data.blockedSites || []).filter((site) => !allowed.has(site.toLowerCase()));
+}
+
 function updateApps(appsList) {
+  appsList = normalizeList(appsList);
   const data = store.load();
   data.blockedApps = appsList;
   store.save(data);
@@ -230,6 +248,7 @@ function updateApps(appsList) {
 }
 
 function startLock(minutes, password) {
+  minutes = normalizeDuration(minutes);
   const data = store.load();
   data.lock = lockManager.startLock(minutes, password);
   store.save(data);
@@ -301,7 +320,7 @@ app.whenReady().then(() => {
   startWatchdog();
 
   const data = store.load();
-  hosts.applyBlockedSites(data.blockedSites);
+  hosts.applyBlockedSites(effectiveBlockedSites(data));
   appBlocker.startAppBlocking(() => store.load().blockedApps);
   if (data.network?.agentEnabled !== false) {
     networkAgent.startNetworkAgent({
@@ -369,6 +388,8 @@ ipcMain.handle('update-apps', (_evt, appsList) => {
   return updateApps(appsList);
 });
 
+ipcMain.handle('update-allowed-sites', (_evt, sites) => updateAllowedSites(sites));
+
 ipcMain.handle('start-lock', (_evt, { minutes, password }) => {
   return startLock(minutes, password);
 });
@@ -401,6 +422,14 @@ ipcMain.handle('network-speed-test', (event) => networkSpeedTest.measureNetworkS
 }));
 
 ipcMain.handle('get-network-groups', () => store.load().network?.groups || []);
+
+ipcMain.handle('delete-network-group', (_evt, groupId) => {
+  const data = store.load();
+  data.network = data.network || { groups: [] };
+  data.network.groups = (data.network.groups || []).filter((group) => group.id !== groupId);
+  store.save(data);
+  return data.network.groups;
+});
 
 ipcMain.handle('save-network-group', (_evt, group) => {
   const data = store.load();

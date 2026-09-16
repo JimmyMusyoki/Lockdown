@@ -179,7 +179,10 @@ async function startNetworkAgent({ getData, updateSites, updateApps, startLock, 
       }
       else if (body.command === 'update-sites') result = updateSites(body.payload || []);
       else if (body.command === 'update-apps') result = updateApps(body.payload || []);
-      else if (body.command === 'start-lock') result = startLock(body.payload || {});
+      else if (body.command === 'start-lock') {
+        const payload = body.payload || {};
+        result = startLock(payload.minutes, payload.password);
+      }
       else if (body.command === 'merge-network-group') result = mergeNetworkGroup(body.payload || {});
       else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
       else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };

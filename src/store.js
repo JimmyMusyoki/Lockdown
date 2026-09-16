@@ -7,6 +7,7 @@ const DATA_FILE = path.join(DATA_DIR, 'blocklist-data.json');
 
 const DEFAULT_DATA = {
   blockedSites: [],      // e.g. ["youtube.com", "facebook.com"]
+  allowedSites: [],      // domains that override the blocked list
   blockedApps: [],       // e.g. ["chrome.exe", "steam.exe"]
   schedules: [],         // [{ id, days: [1,2,3,4,5], start: "09:00", end: "17:00" }]
   lock: {

@@ -10,8 +10,9 @@ contextBridge.exposeInMainWorld('api', {
   installUpdate: () => ipcRenderer.invoke('install-update'),
   onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, status) => callback(status)),
   updateSites: (sites) => ipcRenderer.invoke('update-sites', sites),
+  updateAllowedSites: (sites) => ipcRenderer.invoke('update-allowed-sites', sites),
   updateApps: (apps) => ipcRenderer.invoke('update-apps', apps),
-  startLock: (minutes, password) => ipcRenderer.invoke('start-lock', { minutes, password }),
+  startLock: (minutes) => ipcRenderer.invoke('start-lock', { minutes }),
   getLockStatus: () => ipcRenderer.invoke('get-lock-status')
   ,remoteCommand: (host, password, command, payload, role) => ipcRenderer.invoke('remote-command', { host, password, command, payload, role }),
   discoverNetwork: () => ipcRenderer.invoke('discover-network'),
@@ -20,5 +21,6 @@ contextBridge.exposeInMainWorld('api', {
   getNetworkAuth: () => ipcRenderer.invoke('get-network-auth'),
   setNetworkPasswords: (operatorPassword, adminPassword) => ipcRenderer.invoke('set-network-passwords', { operatorPassword, adminPassword }),
   getNetworkGroups: () => ipcRenderer.invoke('get-network-groups'),
-  saveNetworkGroup: (group) => ipcRenderer.invoke('save-network-group', group)
+  saveNetworkGroup: (group) => ipcRenderer.invoke('save-network-group', group),
+  deleteNetworkGroup: (groupId) => ipcRenderer.invoke('delete-network-group', groupId)
 });

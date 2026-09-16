@@ -12,7 +12,13 @@ function exec(command, args) {
 }
 
 function localAddresses() {
-  return Object.values(os.networkInterfaces()).flat().filter((item) => item && !item.internal && item.family === 'IPv4');
+  return Object.values(os.networkInterfaces()).flat().filter((item) => item
+    && !item.internal
+    && item.family === 'IPv4'
+    && typeof item.address === 'string'
+    && typeof item.netmask === 'string'
+    && isUsableAddress(item.address)
+    && item.netmask.split('.').length === 4);
 }
 
 function isUsableAddress(ip) {
@@ -55,7 +61,7 @@ async function pingAddress(ip) {
 async function probeSubnets(local) {
   // The first non-virtual adapter is the active LAN in the common Windows case.
   // ARP entries from other adapters are still included below.
-  const candidates = [...new Set(subnetHosts(local[0].address, local[0].netmask))];
+  const candidates = [...new Set(local.flatMap((item) => subnetHosts(item.address, item.netmask)))];
   const active = [];
   for (let index = 0; index < candidates.length; index += 64) {
     const batch = await Promise.all(candidates.slice(index, index + 64).map(pingAddress));
@@ -96,7 +102,12 @@ async function resolveName(ip) {
 async function discoverNetwork() {
   const local = localAddresses();
   if (!local.length) return [];
-  const probedAddresses = await probeSubnets(local);
+  let probedAddresses = [];
+  try {
+    probedAddresses = await probeSubnets(local);
+  } catch (_) {
+    // ARP discovery below still works when an adapter blocks ICMP probing.
+  }
   let output = '';
   try {
     output = await exec('arp', ['-a']);
