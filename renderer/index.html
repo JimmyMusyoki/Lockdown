@@ -20,12 +20,15 @@
         <a class="nav-item active" href="#overview"><span class="nav-icon">◈</span>Dashboard</a>
         <a class="nav-item" href="#network"><span class="nav-icon">⌁</span>Network</a>
         <a class="nav-item" href="#devices"><span class="nav-icon">▣</span>Devices</a>
+        <a class="nav-item" href="#about"><span class="nav-icon">i</span>About</a>
       </nav>
 
       <div class="sidebar-note">
-        <span class="eyebrow">Protection mode</span>
-        <strong>Local device</strong>
-        <span>Blocking is active on this Windows computer.</span>
+        <div class="about-sidebar-header">
+          <span class="eyebrow">About</span>
+          <span class="mini-badge" id="app-version-sidebar">v--</span>
+        </div>
+        <h3>Lockdown Blocker</h3>
       </div>
     </aside>
 
@@ -36,7 +39,14 @@
           <h1>Dashboard</h1>
           <p class="subtitle">A live view of protection, network health, and connected devices.</p>
         </div>
-        <div class="header-status"><span class="status-dot"></span><span>Protection online</span></div>
+        <div class="header-actions">
+          <label class="theme-switch" for="theme-toggle-sidebar" aria-label="Toggle dark mode">
+            <input id="theme-toggle-sidebar" type="checkbox" />
+            <span class="switch-slider"></span>
+            <span class="switch-label" id="theme-toggle-label">Dark mode</span>
+          </label>
+          <div class="header-status"><span class="status-dot"></span><span>Protection online</span></div>
+        </div>
       </header>
 
       <div id="lock-banner" class="lock-banner hidden" data-tab-section="overview"></div>
@@ -62,15 +72,23 @@
           </div>
         </section>
 
-        <section class="update-panel" data-tab-section="overview" aria-label="Application updates">
-          <div class="update-panel-copy">
-            <span class="eyebrow">Application updates</span>
-            <h2>Lockdown Blocker <span id="app-version">v--</span></h2>
-            <p id="update-status">Checking for updates...</p>
-            <div class="update-meta"><span id="last-update-check">Last checked: Not yet</span><label class="update-toggle"><input id="automatic-updates" type="checkbox" checked /> Automatic update checks</label></div>
+        <section class="panel about-panel" data-tab-section="about" aria-label="About Lockdown Blocker">
+          <div class="panel-heading about-heading">
+            <div class="panel-icon blue">i</div>
+            <div>
+              <span class="eyebrow">About</span>
+              <h3>Lockdown Blocker</h3>
+            </div>
           </div>
-          <div class="update-actions"><button id="check-updates" class="secondary-button">Check for updates</button><button id="update-action" class="primary-action hidden">Update Now</button></div>
-          <div id="update-progress" class="update-progress hidden"><div><i id="update-progress-bar"></i></div><span id="update-progress-label">0%</span></div>
+          <p class="about-description">Lockdown Blocker is a Windows focus-control app designed to block distracting websites and applications, enforce timed locks, and help manage remote computers on the same local network.</p>
+          <div class="about-metrics">
+            <div><span>Current version</span><strong id="app-version-about">v--</strong></div>
+            <div><span>Update status</span><strong id="about-update-status">Ready</strong></div>
+          </div>
+          <div class="about-actions">
+            <button id="check-updates-about" class="secondary-button">Check for updates</button>
+            <label class="update-toggle"><input id="automatic-updates-about" type="checkbox" checked /> Automatic updates</label>
+          </div>
         </section>
 
         <div class="section-heading" id="websites" data-tab-section="devices" data-device-step="local">

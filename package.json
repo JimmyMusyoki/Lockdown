@@ -1,6 +1,6 @@
 {
   "name": "lockdown-blocker",
-  "version": "1.1.4",
+  "version": "1.1.6",
   "description": "A Cold Turkey-style website & app blocker with a lock timer",
   "main": "main.js",
   "author": "Jimmy",

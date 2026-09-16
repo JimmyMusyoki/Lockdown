@@ -17,6 +17,14 @@ const appVersion = document.getElementById('app-version');
 const updateStatus = document.getElementById('update-status');
 const lastUpdateCheck = document.getElementById('last-update-check');
 const automaticUpdates = document.getElementById('automatic-updates');
+const automaticUpdatesSidebar = document.getElementById('automatic-updates-sidebar');
+const automaticUpdatesAbout = document.getElementById('automatic-updates-about');
+const themeToggleSidebar = document.getElementById('theme-toggle-sidebar');
+const themeToggleLabel = document.getElementById('theme-toggle-label');
+const appVersionSidebar = document.getElementById('app-version-sidebar');
+const appVersionAbout = document.getElementById('app-version-about');
+const aboutUpdateStatus = document.getElementById('about-update-status');
+const aboutSidebarStatus = document.getElementById('about-sidebar-status');
 const checkUpdatesBtn = document.getElementById('check-updates');
 const updateActionBtn = document.getElementById('update-action');
 const updateProgress = document.getElementById('update-progress');
@@ -105,6 +113,21 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2600);
+}
+
+function applyTheme(theme) {
+  const selectedTheme = theme === 'light' ? 'light' : 'dark';
+  document.body.dataset.theme = selectedTheme;
+  if (themeToggleSidebar) {
+    themeToggleSidebar.checked = selectedTheme === 'dark';
+    themeToggleSidebar.setAttribute('aria-label', selectedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  if (themeToggleLabel) themeToggleLabel.textContent = selectedTheme === 'dark' ? 'Dark mode' : 'Light mode';
+  try {
+    window.localStorage.setItem('lockdown-theme', selectedTheme);
+  } catch (_) {
+    // ignore storage issues in restricted contexts
+  }
 }
 
 function agentSessionPassword() {
@@ -636,9 +659,17 @@ async function refreshLockStatus() {
 
 function renderUpdateStatus(state) {
   if (!state) return;
-  appVersion.textContent = `v${state.currentVersion || '--'}`;
-  automaticUpdates.checked = state.automaticUpdates !== false;
+  const currentVersion = state.currentVersion || '--';
+  appVersion.textContent = `v${currentVersion}`;
+  if (appVersionSidebar) appVersionSidebar.textContent = `v${currentVersion}`;
+  if (appVersionAbout) appVersionAbout.textContent = `v${currentVersion}`;
+  if (aboutSidebarStatus) aboutSidebarStatus.textContent = state.message || 'Ready';
+  const isAutomatic = state.automaticUpdates !== false;
+  automaticUpdates.checked = isAutomatic;
+  if (automaticUpdatesSidebar) automaticUpdatesSidebar.checked = isAutomatic;
+  if (automaticUpdatesAbout) automaticUpdatesAbout.checked = isAutomatic;
   updateStatus.textContent = state.message || 'Ready to check for updates.';
+  if (aboutUpdateStatus) aboutUpdateStatus.textContent = state.message || 'Ready to check for updates.';
   updateProgressBar.style.width = `${state.progress || 0}%`;
   updateProgressLabel.textContent = `${state.progress || 0}%`;
   updateProgress.classList.toggle('hidden', !['downloading', 'downloaded'].includes(state.status));
@@ -780,34 +811,72 @@ selectAllSaved.addEventListener('change', () => {
 speedTestBtn.addEventListener('click', runSpeedTest);
 document.querySelectorAll('[data-go-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.goTab)));
 governorTestBtn.addEventListener('click', runGovernorTest);
-checkUpdatesBtn.addEventListener('click', async () => {
+checkUpdatesBtn?.addEventListener('click', async () => {
   markUpdateCheck();
   await window.api.checkForUpdates();
 });
-updateActionBtn.addEventListener('click', async () => {
+document.getElementById('check-updates-sidebar')?.addEventListener('click', async () => {
+  markUpdateCheck();
+  await window.api.checkForUpdates();
+});
+document.getElementById('check-updates-about')?.addEventListener('click', async () => {
+  markUpdateCheck();
+  await window.api.checkForUpdates();
+});
+updateActionBtn?.addEventListener('click', async () => {
   if (updateActionBtn.textContent === 'Restart and Install') {
     await window.api.installUpdate();
     return;
   }
   await window.api.downloadUpdate();
 });
-automaticUpdates.addEventListener('change', () => {
-  window.localStorage.setItem('lockdown-automatic-updates', automaticUpdates.checked ? 'on' : 'off');
-  window.api.setAutomaticUpdates(automaticUpdates.checked);
+[automaticUpdates, automaticUpdatesSidebar, automaticUpdatesAbout].forEach((toggle) => {
+  if (!toggle) return;
+  toggle.addEventListener('change', () => {
+    const enabled = toggle.checked;
+    window.localStorage.setItem('lockdown-automatic-updates', enabled ? 'on' : 'off');
+    [automaticUpdates, automaticUpdatesSidebar, automaticUpdatesAbout].forEach((checkbox) => {
+      if (checkbox) checkbox.checked = enabled;
+    });
+    window.api?.setAutomaticUpdates?.(enabled);
+  });
 });
 window.api?.onUpdateStatus?.((state) => {
   if (state.status === 'checking' || state.status === 'current' || state.status === 'available' || state.status === 'error') markUpdateCheck();
   renderUpdateStatus(state);
 });
+if (themeToggleSidebar) {
+  themeToggleSidebar.addEventListener('click', () => {
+    const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+  });
+}
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', (event) => {
   event.preventDefault();
   const navId = item.getAttribute('href').slice(1);
   setActiveTab(navId);
 }));
 setActiveTab('overview');
-automaticUpdates.checked = window.localStorage.getItem('lockdown-automatic-updates') !== 'off';
-window.api?.setAutomaticUpdates?.(automaticUpdates.checked);
-window.api?.getAppVersion?.().then((version) => { appVersion.textContent = `v${version}`; });
+const savedTheme = (() => {
+  try {
+    return window.localStorage.getItem('lockdown-theme');
+  } catch (_) {
+    return null;
+  }
+})();
+applyTheme(savedTheme || 'dark');
+const savedAutoUpdatePreference = window.localStorage.getItem('lockdown-automatic-updates');
+const automaticPreference = savedAutoUpdatePreference !== 'off';
+automaticUpdates.checked = automaticPreference;
+if (automaticUpdatesSidebar) automaticUpdatesSidebar.checked = automaticPreference;
+if (automaticUpdatesAbout) automaticUpdatesAbout.checked = automaticPreference;
+window.api?.setAutomaticUpdates?.(automaticPreference);
+window.api?.getAppVersion?.().then((version) => {
+  const formattedVersion = `v${version}`;
+  appVersion.textContent = formattedVersion;
+  if (appVersionSidebar) appVersionSidebar.textContent = formattedVersion;
+  if (appVersionAbout) appVersionAbout.textContent = formattedVersion;
+});
 window.api?.getUpdateStatus?.().then(renderUpdateStatus);
 window.api?.getNetworkGroups?.().then((groups) => { networkGroups = groups; renderGroups(); });
 if (window.api?.getData) loadData();
