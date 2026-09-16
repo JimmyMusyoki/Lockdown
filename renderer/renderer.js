@@ -49,6 +49,7 @@ const backToGroupsBtn = document.getElementById('back-to-groups');
 const deviceStepGroupsBtn = document.getElementById('device-step-groups');
 const deviceStepDevicesBtn = document.getElementById('device-step-devices');
 const deviceStepLocalBtn = document.getElementById('device-step-local');
+const deviceStepRulesBtn = document.getElementById('device-step-rules');
 const activeGroupName = document.getElementById('active-group-name');
 const activeGroupCount = document.getElementById('active-group-count');
 const groupSelectionHelp = document.getElementById('group-selection-help');
@@ -591,21 +592,21 @@ async function assignSelectedDevices() {
   const existing = new Map(group.devices.map((device) => [normalizedMac(device.mac) || device.ip, device]));
   devices.forEach((device) => existing.set(normalizedMac(device.mac) || device.ip, device));
   networkGroups = await window.api.saveNetworkGroup({ ...group, devices: [...existing.values()] });
-  await syncNetworkGroup(networkGroups.find((item) => item.id === group.id));
+  const synced = await syncNetworkGroup(networkGroups.find((item) => item.id === group.id));
   renderGroups();
   groupStatus.textContent = `${devices.length} device${devices.length === 1 ? '' : 's'} saved to ${group.name}.`;
-  showToast('Devices added to group');
+  showToast(`Devices saved; synced to ${synced.success}/${synced.total} other PC${synced.total === 1 ? '' : 's'}`);
 }
 
 async function syncNetworkGroup(group) {
-  if (!group || !group.devices.length) return;
+  if (!group || !group.devices.length) return { success: 0, total: 0 };
   const password = await agentSessionPassword();
-  if (!password) return;
+  if (!password) return { success: 0, total: 0 };
   const peers = networkPeers();
   const results = await Promise.allSettled(peers.map((device) => window.api.remoteCommand(
     `${device.ip}:47821`, password, 'merge-network-group', group, 'operator'
   )));
-  return results.filter((result) => result.status === 'fulfilled').length;
+  return { success: results.filter((result) => result.status === 'fulfilled').length, total: peers.length };
 }
 
 function networkPeers() {
@@ -847,6 +848,11 @@ deviceStepDevicesBtn.addEventListener('click', () => {
 deviceStepLocalBtn.addEventListener('click', () => {
   setDeviceStep('local');
   savedPcsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+deviceStepRulesBtn.addEventListener('click', () => {
+  setActiveTab('devices');
+  setDeviceStep('local');
+  document.getElementById('websites')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 focusSelectedBtn.addEventListener('click', () => {
   const devices = selectedSavedDevices();

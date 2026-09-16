@@ -15,17 +15,21 @@ function run(command, args) {
 async function ensurePrivateNetworkAccess(port) {
   if (process.platform !== 'win32') return { supported: false };
   try {
-    const existing = await run('netsh', ['advfirewall', 'firewall', 'show', 'rule', `name=${FIREWALL_RULE_NAME}`]);
-    if (existing.includes(FIREWALL_RULE_NAME)) return { supported: true, created: false };
+    await run('netsh', [
+      'advfirewall', 'firewall', 'set', 'rule', `name=${FIREWALL_RULE_NAME}`,
+      'new', 'dir=in', 'action=allow', 'protocol=TCP', `localport=${port}`,
+      'profile=any', 'remoteip=localsubnet', 'enable=yes'
+    ]);
+    return { supported: true, created: false };
   } catch (_) {
-    // The rule is missing or Windows denied the query; try to create it below.
+    // The rule is missing or Windows denied the update; create it below.
   }
 
   await run('netsh', [
     'advfirewall', 'firewall', 'add', 'rule',
     `name=${FIREWALL_RULE_NAME}`,
     'dir=in', 'action=allow', 'protocol=TCP', `localport=${port}`,
-    'profile=private', 'enable=yes'
+    'profile=any', 'remoteip=localsubnet', 'enable=yes'
   ]);
   return { supported: true, created: true };
 }
