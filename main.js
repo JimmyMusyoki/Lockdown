@@ -27,6 +27,7 @@ let updateTimer;
 let isQuitting = false;
 let automaticUpdates = true;
 const certificatePins = new Map();
+const REMOTE_REQUEST_TIMEOUT_MS = 8000;
 // The SYSTEM boot agent must not claim the interactive user's single-instance
 // lock; otherwise the administrator console could be prevented from opening.
 const hasSingleInstanceLock = isBackgroundAgent || app.requestSingleInstanceLock();
@@ -86,6 +87,9 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
         try { resolve({ status: response.statusCode, body: JSON.parse(text) }); }
         catch (_) { reject(new Error('Invalid response from remote agent.')); }
       });
+    });
+    request.setTimeout(REMOTE_REQUEST_TIMEOUT_MS, () => {
+      request.destroy(new Error(`Remote device timed out after ${REMOTE_REQUEST_TIMEOUT_MS / 1000} seconds.`));
     });
     request.on('socket', (socket) => socket.once('secureConnect', () => {
       const fingerprint = socket.getPeerCertificate().fingerprint256;

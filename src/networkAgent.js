@@ -7,6 +7,7 @@ const selfsigned = require('selfsigned');
 const { execFile } = require('child_process');
 
 const DEFAULT_PORT = 47821;
+const SHUTDOWN_RESPONSE_DELAY_MS = 1500;
 const REQUEST_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const REQUEST_ID_TTL_MS = 2 * 60 * 1000;
 let server;
@@ -137,11 +138,11 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
 
       if (body.command === 'shutdown') {
         sendJson(response, 202, { ok: true, data: { scheduled: true, delaySeconds: 5 } });
-        setImmediate(() => {
+        setTimeout(() => {
           runShutdown().catch((error) => {
             if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
           });
-        });
+        }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
         return;
       }
 
