@@ -1,10 +1,12 @@
 const fs = require('fs');
-const { exec } = require('child_process');
+const { execFileSync } = require('child_process');
 
 function flushDns() {
-  exec('ipconfig /flushdns', (err) => {
-    if (err) console.error('DNS flush failed', err);
-  });
+  try {
+    execFileSync('ipconfig', ['/flushdns'], { windowsHide: true, stdio: 'ignore' });
+  } catch (error) {
+    console.error('DNS flush failed:', error.message);
+  }
 }
 
 // Windows hosts file location
@@ -18,6 +20,8 @@ function readHosts() {
 
 function writeHosts(content) {
   fs.writeFileSync(HOSTS_PATH, content, 'utf-8');
+  const written = readHosts();
+  if (written !== content) throw new Error('Windows hosts file could not be verified after writing.');
   flushDns();
 }
 
@@ -52,7 +56,11 @@ function applyBlockedSites(domains) {
     const d = domain.trim().replace(/^https?:\/\//, '').split(/[/?#]/)[0].toLowerCase().replace(/^www\./, '');
     if (!d) continue;
     lines.push(`127.0.0.1 ${d}`);
+    lines.push(`0.0.0.0 ${d}`);
+    lines.push(`::1 ${d}`);
     lines.push(`127.0.0.1 www.${d}`);
+    lines.push(`0.0.0.0 www.${d}`);
+    lines.push(`::1 www.${d}`);
   }
   lines.push(MARKER_END);
 

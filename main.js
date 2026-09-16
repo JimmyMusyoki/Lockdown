@@ -371,7 +371,7 @@ app.whenReady().then(() => {
     reportHostsPermissionError(error);
   }
   appBlocker.startAppBlocking(() => store.load().blockedApps);
-  if (data.network?.agentEnabled !== false && (isBackgroundAgent || !usesBootAgent)) {
+  if (data.network?.agentEnabled !== false) {
     networkAgent.startNetworkAgent({
       getData: store.load,
       getNetworkGroups: () => store.load().network?.groups || [],
