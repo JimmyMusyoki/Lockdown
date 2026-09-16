@@ -123,6 +123,18 @@
           </div>
           <label class="gaming-toggle"><input id="gaming-mode" type="checkbox" /> Block gaming apps</label>
           <p id="lock-status" class="lock-status"></p>
+          <div class="temporary-unblock-box">
+            <h3>Temporary unblock</h3>
+            <p>Pause selected website and application rules for a short period.</p>
+            <div class="temporary-unblock-form"><label>Minutes<input id="temporary-unblock-minutes" type="number" min="1" max="1440" value="15" /></label><button id="temporary-unblock" class="secondary-button">Pause rules</button><button id="clear-temporary-unblock" class="secondary-button">Restore now</button></div>
+          </div>
+          <div class="schedule-box">
+            <h3>Scheduled restrictions</h3>
+            <p>Start a focus lock automatically on selected days.</p>
+            <div class="schedule-form"><label>Name<input id="schedule-name" type="text" placeholder="Study time" maxlength="50" /></label><label>Start<input id="schedule-start" type="time" value="09:00" /></label><label>End<input id="schedule-end" type="time" value="10:00" /></label><button id="save-schedule" class="primary-action">Add schedule</button></div>
+            <div class="schedule-days" role="group" aria-label="Schedule days"><label><input type="checkbox" value="1" checked /> Mon</label><label><input type="checkbox" value="2" checked /> Tue</label><label><input type="checkbox" value="3" checked /> Wed</label><label><input type="checkbox" value="4" checked /> Thu</label><label><input type="checkbox" value="5" checked /> Fri</label><label><input type="checkbox" value="6" /> Sat</label><label><input type="checkbox" value="0" /> Sun</label></div>
+            <div id="schedule-list" class="schedule-list"><span class="field-note">No schedules configured.</span></div>
+          </div>
         </section>
 
         <div class="section-heading" data-tab-section="network">

@@ -7,6 +7,14 @@ const lockMinutesInput = document.getElementById('lock-minutes');
 const startLockBtn = document.getElementById('start-lock');
 const gamingMode = document.getElementById('gaming-mode');
 const lockStatusEl = document.getElementById('lock-status');
+const temporaryUnblockMinutes = document.getElementById('temporary-unblock-minutes');
+const temporaryUnblockBtn = document.getElementById('temporary-unblock');
+const clearTemporaryUnblockBtn = document.getElementById('clear-temporary-unblock');
+const scheduleNameInput = document.getElementById('schedule-name');
+const scheduleStartInput = document.getElementById('schedule-start');
+const scheduleEndInput = document.getElementById('schedule-end');
+const saveScheduleBtn = document.getElementById('save-schedule');
+const scheduleList = document.getElementById('schedule-list');
 const lockBanner = document.getElementById('lock-banner');
 const sitesCount = document.getElementById('sites-count');
 const appsCount = document.getElementById('apps-count');
@@ -406,6 +414,7 @@ async function refreshSavedPcStatuses(devices) {
   const password = agentSessionPassword();
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
+    if (!card) return;
     try {
       await window.api.remoteCommand(`${device.ip}:47821`, password, 'get-status');
       card.querySelector('.saved-card-status').textContent = 'Online';
@@ -466,6 +475,7 @@ async function refreshSavedNetwork() {
     renderDashboardDevices(devices);
     await reconcileNetworkGroups(devices);
     await synchronizeNetworkGroups();
+    await refreshSavedPcStatuses(savedDevices());
     renderGroups();
   } catch (_) {
     refreshSavedPcStatuses(savedDevices());
@@ -486,6 +496,7 @@ async function scanNetwork() {
     await reconcileNetworkGroups(devices);
     renderDevices(devices);
     await synchronizeNetworkGroups();
+    await refreshSavedPcStatuses(savedDevices());
     renderGroups();
     showToast('Network scan complete');
   } catch (error) {
@@ -507,6 +518,7 @@ async function refreshSavedPcs() {
     await reconcileNetworkGroups(devices);
     await synchronizeNetworkGroups();
     renderDevices(devices);
+    await refreshSavedPcStatuses(savedDevices());
     renderGroups();
     showToast('Saved PC status refreshed');
   } catch (error) {
@@ -732,6 +744,7 @@ async function loadData() {
   gamingMode.checked = gamingApps.every((app) => data.blockedApps.some((blockedApp) => blockedApp.toLowerCase() === app));
   updateCounts();
   await refreshLockStatus();
+  await loadSchedules();
 }
 
 async function refreshLockStatus() {
@@ -748,6 +761,20 @@ async function refreshLockStatus() {
     protectionState.textContent = 'Ready';
     protectionDetail.textContent = 'No active lock';
   }
+}
+
+function renderSchedules(schedules) {
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  scheduleList.innerHTML = schedules.length
+    ? schedules.map((schedule) => `<div class="schedule-row"><span><strong>${escapeHtml(schedule.name)}</strong><small>${schedule.start}–${schedule.end} · ${(schedule.days || []).sort().map((day) => dayNames[day]).join(', ')}</small></span><button class="secondary-button" data-schedule-delete="${escapeHtml(schedule.id)}">Delete</button></div>`).join('')
+    : '<span class="field-note">No schedules configured.</span>';
+  scheduleList.querySelectorAll('[data-schedule-delete]').forEach((button) => button.addEventListener('click', async () => {
+    renderSchedules(await window.api.deleteSchedule(button.dataset.scheduleDelete));
+  }));
+}
+
+async function loadSchedules() {
+  if (window.api?.getSchedules) renderSchedules(await window.api.getSchedules());
 }
 
 function renderUpdateStatus(state) {
@@ -830,6 +857,41 @@ startLockBtn.addEventListener('click', async () => {
   await window.api.startLock(minutes);
   await refreshLockStatus();
   showToast('Focus session started');
+});
+
+temporaryUnblockBtn.addEventListener('click', async () => {
+  try {
+    await window.api.temporaryUnblock(
+      parseInt(temporaryUnblockMinutes.value, 10) || 15,
+      sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean),
+      appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean)
+    );
+    showToast('Rules temporarily paused');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+clearTemporaryUnblockBtn.addEventListener('click', async () => {
+  await window.api.clearTemporaryUnblock();
+  showToast('Rules restored');
+});
+
+saveScheduleBtn.addEventListener('click', async () => {
+  const days = [...document.querySelectorAll('.schedule-days input:checked')].map((input) => Number(input.value));
+  try {
+    const schedules = await window.api.saveSchedule({
+      name: scheduleNameInput.value.trim(),
+      start: scheduleStartInput.value,
+      end: scheduleEndInput.value,
+      days
+    });
+    renderSchedules(schedules);
+    scheduleNameInput.value = '';
+    showToast('Schedule saved');
+  } catch (error) {
+    showToast(error.message);
+  }
 });
 
 sitesInput.addEventListener('input', updateCounts);

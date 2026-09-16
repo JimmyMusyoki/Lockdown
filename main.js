@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const networkDiscovery = require('./src/networkDiscovery');
 const networkSpeedTest = require('./src/networkSpeedTest');
 const windowsPermissions = require('./src/windowsPermissions');
+const scheduleManager = require('./src/scheduleManager');
 const { normalizeList, normalizeDuration } = require('./src/inputValidation');
 
 const appIcon = path.join(__dirname, 'renderer', 'spacecraft.png');
@@ -24,6 +25,7 @@ let speedWindow;
 let tray;
 let watchdogTimer;
 let updateTimer;
+let scheduleTimer;
 let isQuitting = false;
 let automaticUpdates = true;
 const certificatePins = new Map();
@@ -242,10 +244,15 @@ function startWatchdog() {
   clearInterval(watchdogTimer);
   watchdogTimer = setInterval(() => {
     const data = store.load();
+    const temporary = data.temporaryUnblock || {};
+    if (temporary.until && Date.now() >= new Date(temporary.until).getTime()) {
+      delete data.temporaryUnblock;
+      store.save(data);
+    }
     if (data.blockedSites.length > 0 || lockManager.isLocked(data.lock)) {
       const allowedSites = data.allowedSites || [];
       try {
-        hosts.applyBlockedSites(data.blockedSites.filter((site) => !allowedSites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+        hosts.applyBlockedSites(effectiveBlockedSites(data));
       } catch (error) {
         console.error('Watchdog could not apply website blocks:', error.message);
       }
@@ -258,9 +265,39 @@ function updateSites(sites) {
   const data = store.load();
   data.blockedSites = sites;
   store.save(data);
-  hosts.applyBlockedSites(sites.filter((site) => !(data.allowedSites || []).some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+  hosts.applyBlockedSites(effectiveBlockedSites(data));
   recordActivity('Website block list updated', `${sites.length} site${sites.length === 1 ? '' : 's'}`);
   return data;
+}
+
+function effectiveBlockedApps(data) {
+  const temporary = data.temporaryUnblock || {};
+  const active = temporary.until && Date.now() < new Date(temporary.until).getTime();
+  const excluded = new Set(active ? (temporary.apps || []).map((app) => app.toLowerCase()) : []);
+  return (data.blockedApps || []).filter((app) => !excluded.has(app.toLowerCase()));
+}
+
+function refreshScheduledRestrictions() {
+  const data = store.load();
+  const active = scheduleManager.activeSchedules(data.schedules || []);
+  const scheduledLock = data.lock?.source === 'schedule';
+  if (active.length) {
+    const endDate = active.reduce((latest, item) => item.window.endDate > latest ? item.window.endDate : latest, active[0].window.endDate);
+    data.lock = { active: true, unlockAt: endDate.toISOString(), source: 'schedule' };
+    store.save(data);
+    return;
+  }
+  if (scheduledLock) {
+    data.lock = { active: false, unlockAt: null };
+    store.save(data);
+  }
+}
+
+function startScheduleWatcher() {
+  clearInterval(scheduleTimer);
+  refreshScheduledRestrictions();
+  scheduleTimer = setInterval(refreshScheduledRestrictions, 30000);
+  scheduleTimer.unref();
 }
 
 function updateAllowedSites(sites) {
@@ -268,13 +305,16 @@ function updateAllowedSites(sites) {
   const data = store.load();
   data.allowedSites = sites;
   store.save(data);
-  hosts.applyBlockedSites((data.blockedSites || []).filter((site) => !sites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+  hosts.applyBlockedSites(effectiveBlockedSites(data));
   return data;
 }
 
 function effectiveBlockedSites(data) {
   const allowed = new Set((data.allowedSites || []).map((site) => site.toLowerCase()));
-  return (data.blockedSites || []).filter((site) => !allowed.has(site.toLowerCase()));
+  const temporary = data.temporaryUnblock || {};
+  const active = temporary.until && Date.now() < new Date(temporary.until).getTime();
+  const excluded = new Set(active ? (temporary.sites || []).map((site) => site.toLowerCase()) : []);
+  return (data.blockedSites || []).filter((site) => !allowed.has(site.toLowerCase()) && !excluded.has(site.toLowerCase()));
 }
 
 function reportHostsPermissionError(error) {
@@ -363,6 +403,7 @@ app.whenReady().then(() => {
     createTray();
   }
   startWatchdog();
+  startScheduleWatcher();
 
   const data = store.load();
   try {
@@ -370,7 +411,7 @@ app.whenReady().then(() => {
   } catch (error) {
     reportHostsPermissionError(error);
   }
-  appBlocker.startAppBlocking(() => store.load().blockedApps);
+  appBlocker.startAppBlocking(() => effectiveBlockedApps(store.load()));
   if (data.network?.agentEnabled !== false) {
     networkAgent.startNetworkAgent({
       getData: store.load,
@@ -459,6 +500,52 @@ ipcMain.handle('get-lock-status', () => {
     locked: lockManager.isLocked(data.lock),
     remainingMs: lockManager.timeRemainingMs(data.lock)
   };
+});
+
+ipcMain.handle('get-schedules', () => store.load().schedules || []);
+
+ipcMain.handle('save-schedule', (_evt, schedule) => {
+  const start = scheduleManager.parseTime(schedule?.start);
+  const end = scheduleManager.parseTime(schedule?.end);
+  const days = Array.isArray(schedule?.days) ? [...new Set(schedule.days.map(Number).filter((day) => day >= 0 && day <= 6))] : [];
+  if (!schedule?.name || start === null || end === null || start === end || !days.length) {
+    throw new Error('Schedule needs a name, different start/end times, and at least one day.');
+  }
+  const data = store.load();
+  const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+  const cleaned = { id: schedule.id || crypto.randomUUID(), name: String(schedule.name).trim().slice(0, 50), start: schedule.start, end: schedule.end, days, enabled: schedule.enabled !== false };
+  const index = schedules.findIndex((item) => item.id === cleaned.id);
+  if (index >= 0) schedules[index] = cleaned;
+  else schedules.push(cleaned);
+  data.schedules = schedules;
+  store.save(data);
+  refreshScheduledRestrictions();
+  return schedules;
+});
+
+ipcMain.handle('delete-schedule', (_evt, id) => {
+  const data = store.load();
+  data.schedules = (data.schedules || []).filter((schedule) => schedule.id !== id);
+  store.save(data);
+  refreshScheduledRestrictions();
+  return data.schedules;
+});
+
+ipcMain.handle('temporary-unblock', (_evt, { minutes, sites, apps }) => {
+  const duration = normalizeDuration(minutes);
+  const data = store.load();
+  data.temporaryUnblock = { until: new Date(Date.now() + duration * 60000).toISOString(), sites: normalizeList(sites || []), apps: normalizeList(apps || []).map((app) => app.toLowerCase()) };
+  store.save(data);
+  hosts.applyBlockedSites(effectiveBlockedSites(data));
+  return data.temporaryUnblock;
+});
+
+ipcMain.handle('clear-temporary-unblock', () => {
+  const data = store.load();
+  delete data.temporaryUnblock;
+  store.save(data);
+  hosts.applyBlockedSites(effectiveBlockedSites(data));
+  return true;
 });
 
 ipcMain.handle('remote-command', (_evt, { host, password, command, payload, role }) =>

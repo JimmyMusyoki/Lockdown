@@ -10,6 +10,7 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 - **Tray persistence** — closing the window while locked hides it instead of quitting, so the block can't be dodged by closing the app
 - **LAN controller** — the same app can run as a password-protected agent on every desktop, while one desktop sends website, app, and lock commands to the others
 - **Background agent** — installed builds create a boot-time Windows agent that runs before sign-in, applies one shared rule set to every account, and opens the private-network firewall rule for the LAN agent
+- **Schedules and temporary unblock** — recurring weekday/time windows can start focus restrictions automatically, while selected website and application rules can be paused for a limited number of minutes
 
 ## Requirements
 - Node.js 18+
@@ -95,5 +96,5 @@ renderer/               UI (HTML/CSS/JS) — block list editor + lock controls
 - **Bypass via Task Manager**: a determined user with admin rights can still kill the app itself via Task Manager. Cold Turkey solves this with a separate always-on Windows service that's harder to kill than the GUI app — consider splitting the watchdog into a `node-windows` service.
 - **Safe mode bypass**: booting into Windows Safe Mode skips most startup services, including this one. Cold Turkey has the same limitation on free tiers.
 - **Hosts file conflicts**: if another tool also manages the hosts file, the marker-based strip/reapply logic could conflict — test with your specific setup.
-- **Scheduling**: `schedules` is defined in the data store but not yet wired to auto-start/stop blocks — add `node-schedule` cron jobs in `main.js` reading `data.schedules`.
+- **Scheduling**: schedules are evaluated by the background agent every 30 seconds. The computer must be running for a scheduled restriction to start.
 - **Password on unlock**: currently the password is stored but not yet enforced anywhere (there's no "unlock early with password" flow) — intentional, since Cold Turkey's own point is that locks can't be broken early. Add it only if you want an escape hatch.
