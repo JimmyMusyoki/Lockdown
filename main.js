@@ -164,6 +164,9 @@ async function checkForUpdates() {
 
 function configureAutoUpdates() {
   if (!app.isPackaged) return;
+  const savedPreference = store.load().updates?.automatic;
+  automaticUpdates = savedPreference !== false;
+  updateState.automaticUpdates = automaticUpdates;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-available', (info) => {
@@ -189,6 +192,9 @@ function configureAutoUpdates() {
     if (automaticUpdates) checkForUpdates();
   }, 6 * 60 * 60 * 1000);
   updateTimer.unref();
+  setTimeout(() => {
+    if (automaticUpdates) checkForUpdates();
+  }, 5000).unref();
 }
 
 function createTray() {
@@ -368,7 +374,6 @@ app.whenReady().then(() => {
         .then(() => console.log('Boot-time background agent is ready.'))
         .catch((error) => console.error('Boot-time background agent unavailable:', error.message));
     }
-    checkForUpdates();
   }
 });
 }
@@ -387,6 +392,9 @@ ipcMain.handle('get-update-status', () => updateState);
 
 ipcMain.handle('set-automatic-updates', (_evt, enabled) => {
   automaticUpdates = Boolean(enabled);
+  const data = store.load();
+  data.updates = { ...(data.updates || {}), automatic: automaticUpdates };
+  store.save(data);
   updateState.automaticUpdates = automaticUpdates;
   return updateState;
 });
