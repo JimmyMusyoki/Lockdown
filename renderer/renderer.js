@@ -13,7 +13,6 @@ const appsCount = document.getElementById('apps-count');
 const protectionState = document.getElementById('protection-state');
 const protectionDetail = document.getElementById('protection-detail');
 const toast = document.getElementById('toast');
-const appVersion = document.getElementById('app-version');
 const updateStatus = document.getElementById('update-status');
 const lastUpdateCheck = document.getElementById('last-update-check');
 const automaticUpdates = document.getElementById('automatic-updates');
@@ -663,7 +662,6 @@ async function refreshLockStatus() {
 function renderUpdateStatus(state) {
   if (!state) return;
   const currentVersion = state.currentVersion || '--';
-  appVersion.textContent = `v${currentVersion}`;
   if (appVersionSidebar) appVersionSidebar.textContent = `v${currentVersion}`;
   if (appVersionAbout) appVersionAbout.textContent = `v${currentVersion}`;
   if (aboutSidebarStatus) aboutSidebarStatus.textContent = state.message || 'Ready';
@@ -880,7 +878,6 @@ if (automaticUpdatesAbout) automaticUpdatesAbout.checked = automaticPreference;
 window.api?.setAutomaticUpdates?.(automaticPreference);
 window.api?.getAppVersion?.().then((version) => {
   const formattedVersion = `v${version}`;
-  appVersion.textContent = formattedVersion;
   if (appVersionSidebar) appVersionSidebar.textContent = formattedVersion;
   if (appVersionAbout) appVersionAbout.textContent = formattedVersion;
 });
