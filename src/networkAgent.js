@@ -86,9 +86,9 @@ function runShutdown() {
   return new Promise((resolve, reject) => {
     const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
     const shutdownPath = path.join(systemRoot, 'System32', 'shutdown.exe');
-    execFile(shutdownPath, ['/s', '/f', '/t', '0'], { windowsHide: true }, (error, _stdout, stderr) => {
+    execFile(shutdownPath, ['/s', '/f', '/t', '5'], { windowsHide: true }, (error, _stdout, stderr) => {
       if (!error) {
-        resolve({ scheduled: true });
+        resolve({ scheduled: true, delaySeconds: 5 });
         return;
       }
       const detail = String(stderr || error.message || '').trim();
