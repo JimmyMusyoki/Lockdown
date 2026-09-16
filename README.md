@@ -9,7 +9,7 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 - **Watchdog** — re-applies the hosts block every 5s, so manually editing the hosts file back doesn't work while a lock is active
 - **Tray persistence** — closing the window while locked hides it instead of quitting, so the block can't be dodged by closing the app
 - **LAN controller** — the same app can run as a password-protected agent on every desktop, while one desktop sends website, app, and lock commands to the others
-- **Background agent** — installed builds start with Windows, stay in the system tray, and open the private-network firewall rule for the LAN agent
+- **Background agent** — installed builds create a boot-time Windows agent that runs before sign-in, applies one shared rule set to every account, and opens the private-network firewall rule for the LAN agent
 
 ## Requirements
 - Node.js 18+
@@ -31,7 +31,7 @@ npm start
 
 Install and run the app on each desktop on the same LAN. Each installation exposes an HTTPS agent on port `47821` by default. All installations use the shared agent password configured for the app. Enter it in the Network controller panel to start a two-minute command session; after that, the app prompts again. Commands use a single-use challenge, timestamp, request ID, and signed command envelope. The password itself is never sent over the network. The controller pins each agent's first observed certificate for the current session and rejects certificate changes.
 
-The installed build starts with Windows and runs in the background from the system tray. It requests administrator rights so it can edit the hosts file, control processes, and create a private-network Windows Firewall rule for port `47821`. Use the tray menu's **Quit Lockdown** command to stop it completely.
+The installed build creates a Windows Task Scheduler task named **Lockdown Blocker Background Agent**. It runs as `SYSTEM` when Windows powers on, before any account signs in, so hosts and application rules apply to every local account. Rules and certificates are stored in `C:\ProgramData\Lockdown Blocker`, letting the background agent and administrator console share the same state. The boot agent has no visible window; the normal app window remains the administrator console.
 
 ## Build a Windows installer
 ```bash

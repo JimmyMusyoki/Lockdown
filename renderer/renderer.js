@@ -54,6 +54,10 @@ const agentPasswordDialog = document.getElementById('agent-password-dialog');
 const agentPasswordDialogInput = document.getElementById('agent-password-dialog-input');
 const agentPasswordCancel = document.getElementById('agent-password-cancel');
 const agentPasswordSubmit = document.getElementById('agent-password-submit');
+const passwordSetupDialog = document.getElementById('password-setup-dialog');
+const passwordSetupInput = document.getElementById('password-setup-input');
+const passwordSetupConfirm = document.getElementById('password-setup-confirm');
+const passwordSetupSave = document.getElementById('password-setup-save');
 const groupSitesBtn = document.getElementById('group-sites');
 const groupAppsBtn = document.getElementById('group-apps');
 const groupLockBtn = document.getElementById('group-lock');
@@ -173,6 +177,24 @@ function finishPasswordDialog(password) {
   agentPasswordValue = password;
   updateAgentSessionStatus();
   resolve?.(password);
+}
+
+async function saveSharedPassword() {
+  const password = passwordSetupInput.value;
+  if (password.length < 12) return showToast('Use at least 12 characters.');
+  if (password !== passwordSetupConfirm.value) return showToast('The passwords do not match.');
+  passwordSetupSave.disabled = true;
+  try {
+    await window.api.setNetworkPasswords(password, password);
+    passwordSetupDialog.hidden = true;
+    agentPasswordValue = password;
+    updateAgentSessionStatus();
+    showToast('Shared administrator password saved. Set this same password on every lab PC.');
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    passwordSetupSave.disabled = false;
+  }
 }
 
 function updateCounts() {
@@ -837,6 +859,7 @@ agentPasswordDialogInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') finishPasswordDialog(agentPasswordDialogInput.value);
   if (event.key === 'Escape') finishPasswordDialog(null);
 });
+passwordSetupSave.addEventListener('click', saveSharedPassword);
 speedTestBtn.addEventListener('click', runSpeedTest);
 document.querySelectorAll('[data-go-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.goTab)));
 governorTestBtn.addEventListener('click', runGovernorTest);
@@ -870,6 +893,12 @@ window.api?.setAutomaticUpdates?.(automaticUpdates.checked);
 window.api?.getAppVersion?.().then((version) => { appVersion.textContent = `v${version}`; });
 window.api?.getUpdateStatus?.().then(renderUpdateStatus);
 window.api?.getNetworkGroups?.().then((groups) => { networkGroups = groups; renderGroups(); });
+window.api?.getNetworkAuth?.().then((auth) => {
+  if (!auth.operatorConfigured || !auth.adminConfigured) {
+    passwordSetupDialog.hidden = false;
+    passwordSetupInput.focus();
+  }
+});
 if (window.api?.getData) loadData();
 setInterval(refreshLockStatus, 1000);
 setInterval(refreshSavedNetwork, 30000);

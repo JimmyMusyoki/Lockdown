@@ -187,6 +187,15 @@
       <div class="password-dialog-actions"><button id="agent-password-cancel" class="secondary-button">Cancel</button><button id="agent-password-submit" class="primary-action">Continue</button></div>
     </div>
   </div>
+  <div id="password-setup-dialog" class="password-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="password-setup-title">
+    <div class="password-dialog-panel">
+      <h2 id="password-setup-title">Set shared administrator password</h2>
+      <p>Use the same password on every lab PC. It is stored only as a one-way derived key.</p>
+      <label class="dialog-field">Password<input id="password-setup-input" type="password" autocomplete="new-password" minlength="12" /></label>
+      <label class="dialog-field">Confirm password<input id="password-setup-confirm" type="password" autocomplete="new-password" minlength="12" /></label>
+      <div class="password-dialog-actions"><button id="password-setup-save" class="primary-action">Save password</button></div>
+    </div>
+  </div>
   <script src="renderer.js"></script>
 </body>
 </html>

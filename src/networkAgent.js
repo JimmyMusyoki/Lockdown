@@ -7,7 +7,6 @@ const selfsigned = require('selfsigned');
 const { execFile } = require('child_process');
 
 const DEFAULT_PORT = 47821;
-const DEFAULT_PASSWORD_HASH = '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae';
 const REQUEST_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const REQUEST_ID_TTL_MS = 2 * 60 * 1000;
 const AUTH_WINDOW_MS = 60 * 1000;
@@ -37,7 +36,11 @@ async function loadCertificate(certificateDirectory) {
 }
 
 function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  if (typeof password !== 'string' || password.length < 12) throw new Error('Password must be at least 12 characters.');
+  // A deterministic, memory-hard key is required because every lab PC derives
+  // the same HMAC key from the administrator's shared password. No password or
+  // default credential is stored in source code.
+  return `scrypt:${crypto.scryptSync(password, 'lockdown-agent-v1', 32).toString('hex')}`;
 }
 
 function safeEqual(left, right) {
@@ -151,8 +154,8 @@ async function startNetworkAgent({ getData, updateSites, updateApps, startLock, 
         return;
       }
       const passwordHash = requiredRole === 'admin'
-        ? network.adminPasswordHash || network.passwordHash || DEFAULT_PASSWORD_HASH
-        : network.passwordHash || DEFAULT_PASSWORD_HASH;
+        ? network.adminPasswordHash || network.passwordHash
+        : network.passwordHash;
       if (!passwordHash) {
         sendJson(response, 503, { error: `${requiredRole} authentication is not configured.` });
         return;
@@ -213,6 +216,5 @@ module.exports = {
   canonicalRequest,
   createRequestProof,
   loadCertificate,
-  DEFAULT_PORT,
-  DEFAULT_PASSWORD_HASH
+  DEFAULT_PORT
 };

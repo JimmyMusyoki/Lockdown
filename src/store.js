@@ -2,8 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
-const DATA_DIR = app.getPath('userData');
+// ProgramData is shared by the boot-time SYSTEM agent and every signed-in user.
+// Electron's userData directory would create one independent block list per account.
+const DATA_DIR = process.platform === 'win32'
+  ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'Lockdown Blocker')
+  : app.getPath('userData');
 const DATA_FILE = path.join(DATA_DIR, 'blocklist-data.json');
+const LEGACY_DATA_FILE = path.join(app.getPath('userData'), 'blocklist-data.json');
 
 const DEFAULT_DATA = {
   blockedSites: [],      // e.g. ["youtube.com", "facebook.com"]
@@ -18,14 +23,20 @@ const DEFAULT_DATA = {
   network: {
     agentEnabled: true,
     port: 47821,
-    passwordHash: '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae',
-    adminPasswordHash: '01953c479c9df40d9e2f9e4fc54c82bf04ac12a8a1288135b2a41b35589f2cae',
+    passwordHash: null,
+    adminPasswordHash: null,
     groups: []
   },
   activity: []
 };
 
 function ensureFile() {
+  // The first packaged run upgrades an existing per-user installation without
+  // dropping its lists before the machine-wide boot agent is scheduled.
+  if (!fs.existsSync(DATA_FILE) && DATA_FILE !== LEGACY_DATA_FILE && fs.existsSync(LEGACY_DATA_FILE)) {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+  }
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(DEFAULT_DATA, null, 2));
@@ -48,4 +59,4 @@ function save(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-module.exports = { load, save, DATA_FILE };
+module.exports = { load, save, DATA_DIR, DATA_FILE };

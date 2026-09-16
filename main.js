@@ -15,6 +15,8 @@ const windowsPermissions = require('./src/windowsPermissions');
 const { normalizeList, normalizeDuration } = require('./src/inputValidation');
 
 const appIcon = path.join(__dirname, 'renderer', 'spacecraft.png');
+const isBackgroundAgent = process.argv.includes('--background-agent');
+const usesBootAgent = process.platform === 'win32' && app.isPackaged;
 
 let mainWindow;
 let speedWindow;
@@ -24,7 +26,9 @@ let updateTimer;
 let isQuitting = false;
 let automaticUpdates = true;
 const certificatePins = new Map();
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+// The SYSTEM boot agent must not claim the interactive user's single-instance
+// lock; otherwise the administrator console could be prevented from opening.
+const hasSingleInstanceLock = isBackgroundAgent || app.requestSingleInstanceLock();
 let updateState = {
   status: 'idle',
   currentVersion: app.getVersion(),
@@ -36,7 +40,7 @@ let updateState = {
 };
 
 function configureWindowsStartup() {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32' || isBackgroundAgent || usesBootAgent) return;
   const args = app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'];
   app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
 }
@@ -77,7 +81,7 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
   const challengeResponse = await requestJson('GET', '/challenge');
   if (challengeResponse.status !== 200) throw new Error('Could not reach that device. Check its IP and firewall.');
   const { nonce } = challengeResponse.body;
-  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+  const passwordHash = networkAgent.hashPassword(password);
   const request = {
     nonce,
     timestamp: Date.now(),
@@ -314,15 +318,17 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.jimmy.lockdownblocker');
   Menu.setApplicationMenu(null);
   configureWindowsStartup();
-  createWindow();
-  configureAutoUpdates();
-  createTray();
+  if (!isBackgroundAgent) {
+    createWindow();
+    configureAutoUpdates();
+    createTray();
+  }
   startWatchdog();
 
   const data = store.load();
   hosts.applyBlockedSites(effectiveBlockedSites(data));
   appBlocker.startAppBlocking(() => store.load().blockedApps);
-  if (data.network?.agentEnabled !== false) {
+  if (data.network?.agentEnabled !== false && (isBackgroundAgent || !usesBootAgent)) {
     networkAgent.startNetworkAgent({
       getData: store.load,
       updateSites,
@@ -331,14 +337,21 @@ app.whenReady().then(() => {
       getActivity,
       mergeNetworkGroup,
       recordActivity,
-      certificateDirectory: path.join(app.getPath('userData'), 'agent-certificate'),
+      certificateDirectory: path.join(store.DATA_DIR, 'agent-certificate'),
       port: data.network?.port || networkAgent.DEFAULT_PORT
     }).catch((error) => console.error('Network agent failed to start:', error.message));
     windowsPermissions.ensurePrivateNetworkAccess(data.network?.port || networkAgent.DEFAULT_PORT)
       .then((result) => console.log(result.created ? 'Private network firewall rule created.' : 'Private network firewall rule ready.'))
       .catch((error) => console.error('Private network firewall rule unavailable:', error.message));
   }
-  checkForUpdates();
+  if (!isBackgroundAgent) {
+    if (usesBootAgent) {
+      windowsPermissions.ensureBootAgent(process.execPath)
+        .then(() => console.log('Boot-time background agent is ready.'))
+        .catch((error) => console.error('Boot-time background agent unavailable:', error.message));
+    }
+    checkForUpdates();
+  }
 });
 }
 
