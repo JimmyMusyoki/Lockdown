@@ -666,25 +666,27 @@ function renderUpdateStatus(state) {
   if (appVersionAbout) appVersionAbout.textContent = `v${currentVersion}`;
   if (aboutSidebarStatus) aboutSidebarStatus.textContent = state.message || 'Ready';
   const isAutomatic = state.automaticUpdates !== false;
-  automaticUpdates.checked = isAutomatic;
+  if (automaticUpdates) automaticUpdates.checked = isAutomatic;
   if (automaticUpdatesSidebar) automaticUpdatesSidebar.checked = isAutomatic;
   if (automaticUpdatesAbout) automaticUpdatesAbout.checked = isAutomatic;
-  updateStatus.textContent = state.message || 'Ready to check for updates.';
+  if (updateStatus) updateStatus.textContent = state.message || 'Ready to check for updates.';
   if (aboutUpdateStatus) aboutUpdateStatus.textContent = state.message || 'Ready to check for updates.';
-  updateProgressBar.style.width = `${state.progress || 0}%`;
-  updateProgressLabel.textContent = `${state.progress || 0}%`;
-  updateProgress.classList.toggle('hidden', !['downloading', 'downloaded'].includes(state.status));
-  updateActionBtn.classList.add('hidden');
-  updateActionBtn.disabled = false;
-  if (state.status === 'available') updateActionBtn.textContent = 'Update Now';
-  if (state.status === 'available' || state.status === 'downloaded') updateActionBtn.classList.remove('hidden');
-  if (state.status === 'downloaded') updateActionBtn.textContent = 'Restart and Install';
-  if (state.status === 'downloading') updateActionBtn.disabled = true;
-  checkUpdatesBtn.disabled = state.status === 'checking' || state.status === 'downloading';
+  if (updateProgressBar) updateProgressBar.style.width = `${state.progress || 0}%`;
+  if (updateProgressLabel) updateProgressLabel.textContent = `${state.progress || 0}%`;
+  if (updateProgress) updateProgress.classList.toggle('hidden', !['downloading', 'downloaded'].includes(state.status));
+  if (updateActionBtn) {
+    updateActionBtn.classList.add('hidden');
+    updateActionBtn.disabled = false;
+    if (state.status === 'available') updateActionBtn.textContent = 'Update Now';
+    if (state.status === 'available' || state.status === 'downloaded') updateActionBtn.classList.remove('hidden');
+    if (state.status === 'downloaded') updateActionBtn.textContent = 'Restart and Install';
+    if (state.status === 'downloading') updateActionBtn.disabled = true;
+  }
+  if (checkUpdatesBtn) checkUpdatesBtn.disabled = state.status === 'checking' || state.status === 'downloading';
 }
 
 function markUpdateCheck() {
-  lastUpdateCheck.textContent = `Last checked: ${new Date().toLocaleString()}`;
+  if (lastUpdateCheck) lastUpdateCheck.textContent = `Last checked: ${new Date().toLocaleString()}`;
 }
 
 function setActiveTab(id) {
@@ -872,7 +874,7 @@ const savedTheme = (() => {
 applyTheme(savedTheme || 'dark');
 const savedAutoUpdatePreference = window.localStorage.getItem('lockdown-automatic-updates');
 const automaticPreference = savedAutoUpdatePreference !== 'off';
-automaticUpdates.checked = automaticPreference;
+if (automaticUpdates) automaticUpdates.checked = automaticPreference;
 if (automaticUpdatesSidebar) automaticUpdatesSidebar.checked = automaticPreference;
 if (automaticUpdatesAbout) automaticUpdatesAbout.checked = automaticPreference;
 window.api?.setAutomaticUpdates?.(automaticPreference);
