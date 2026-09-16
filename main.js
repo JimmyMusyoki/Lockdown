@@ -297,6 +297,11 @@ function getActivity() {
   return store.load().activity || [];
 }
 
+function normalizedDeviceMac(mac) {
+  const value = String(mac || '').replace(/[:-]/g, '').toLowerCase();
+  return /^[\da-f]{12}$/.test(value) ? value : null;
+}
+
 function mergeNetworkGroup(group) {
   if (!group || !group.id || !group.name || !Array.isArray(group.devices)) throw new Error('Invalid network group.');
   const data = store.load();
@@ -306,8 +311,9 @@ function mergeNetworkGroup(group) {
   if (index === -1) groups.push(group);
   else {
     const existing = groups[index];
-    const devices = new Map((existing.devices || []).map((device) => [device.mac || device.ip, device]));
-    group.devices.forEach((device) => devices.set(device.mac || device.ip, { ...devices.get(device.mac || device.ip), ...device }));
+    const deviceKey = (device) => normalizedDeviceMac(device.mac) || device.ip;
+    const devices = new Map((existing.devices || []).map((device) => [deviceKey(device), device]));
+    group.devices.forEach((device) => devices.set(deviceKey(device), { ...devices.get(deviceKey(device)), ...device }));
     groups[index] = { ...existing, name: group.name, devices: [...devices.values()] };
   }
   data.network.groups = groups;

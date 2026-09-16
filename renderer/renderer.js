@@ -116,6 +116,18 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 2600);
 }
 
+function remoteFailureMessage(error, device) {
+  const detail = String(error?.message || error || '').replace(/^Error:\s*/i, '');
+  const address = device?.name || device?.ip || 'remote device';
+  if (/ETIMEDOUT|timed out|ENETUNREACH|EHOSTUNREACH/i.test(detail)) {
+    return `${address} is unreachable. Check that it is powered on and connected to the same network.`;
+  }
+  if (/ECONNREFUSED|Could not reach/i.test(detail)) {
+    return `${address} is online, but its Lockdown agent is not running or port 47821 is blocked.`;
+  }
+  return `${address}: ${detail || 'Remote command failed.'}`;
+}
+
 function applyTheme(theme) {
   const selectedTheme = theme === 'light' ? 'light' : 'dark';
   document.body.dataset.theme = selectedTheme;
@@ -172,18 +184,25 @@ function devicesMatch(left, right) {
 
 async function reconcileNetworkGroups(devices) {
   let changed = false;
+  const discoveredByMac = new Map(devices.map((device) => [normalizedMac(device.mac), device]).filter(([mac]) => mac));
+  const discoveredByIp = new Map(devices.map((device) => [device.ip, device]));
   const updatedGroups = networkGroups.map((group) => ({
     ...group,
-    devices: group.devices.map((savedDevice) => {
+    devices: group.devices.reduce((reconciled, savedDevice) => {
       const savedMac = normalizedMac(savedDevice.mac);
-      const match = devices.find((device) => savedMac
-        ? normalizedMac(device.mac) === savedMac
-        : device.ip === savedDevice.ip);
-      if (!match) return savedDevice;
-      const updated = { ...savedDevice, ...match };
+      const match = (savedMac && discoveredByMac.get(savedMac)) || discoveredByIp.get(savedDevice.ip);
+      const updated = match ? { ...savedDevice, ...match, mac: match.mac || savedDevice.mac } : savedDevice;
+      const identity = normalizedMac(updated.mac) || updated.ip;
+      const duplicateIndex = reconciled.findIndex((device) => (normalizedMac(device.mac) || device.ip) === identity);
+      if (duplicateIndex >= 0) {
+        reconciled[duplicateIndex] = { ...reconciled[duplicateIndex], ...updated };
+        changed = true;
+      } else {
+        reconciled.push(updated);
+      }
       if (JSON.stringify(updated) !== JSON.stringify(savedDevice)) changed = true;
-      return updated;
-    })
+      return reconciled;
+    }, [])
   }));
 
   if (!changed) return;
@@ -425,9 +444,11 @@ async function runBulkCommand(devices, command, message) {
   const failureIndex = results.findIndex((result) => result.status === 'rejected');
   const failedDevice = failureIndex >= 0 ? devices[failureIndex] : null;
   const failureMessage = failedDevice
-    ? `${failedDevice.name || failedDevice.ip}: ${failure?.reason?.message || 'Task failed'}`
+    ? remoteFailureMessage(failure?.reason, failedDevice)
     : 'Task failed';
-  showToast(success ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}` : failureMessage);
+  showToast(success
+    ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}${failure ? `; ${failureMessage}` : ''}`
+    : failureMessage);
   if (command !== 'shutdown') refreshSavedPcStatuses(devices);
 }
 
