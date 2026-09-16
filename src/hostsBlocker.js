@@ -49,7 +49,7 @@ function applyBlockedSites(domains) {
 
   const lines = [MARKER_START];
   for (const domain of domains) {
-    const d = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const d = domain.trim().replace(/^https?:\/\//, '').split(/[/?#]/)[0].toLowerCase().replace(/^www\./, '');
     if (!d) continue;
     lines.push(`127.0.0.1 ${d}`);
     lines.push(`127.0.0.1 www.${d}`);

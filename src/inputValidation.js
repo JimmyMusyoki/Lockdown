@@ -3,8 +3,19 @@ function normalizeList(value) {
 
   return [...new Set(value
     .filter((item) => typeof item === 'string')
-    .map((item) => item.trim())
+    .map((item) => normalizeSite(item))
     .filter(Boolean))];
+}
+
+function normalizeSite(value) {
+  const text = value.trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+    return parsed.hostname.toLowerCase().replace(/^www\./, '');
+  } catch (_) {
+    return text.toLowerCase().split('/')[0].split('?')[0].split('#')[0];
+  }
 }
 
 function normalizeDuration(value) {
@@ -15,4 +26,4 @@ function normalizeDuration(value) {
   return Math.floor(minutes);
 }
 
-module.exports = { normalizeList, normalizeDuration };
+module.exports = { normalizeList, normalizeDuration, normalizeSite };

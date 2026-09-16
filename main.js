@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -244,7 +244,11 @@ function startWatchdog() {
     const data = store.load();
     if (data.blockedSites.length > 0 || lockManager.isLocked(data.lock)) {
       const allowedSites = data.allowedSites || [];
-      hosts.applyBlockedSites(data.blockedSites.filter((site) => !allowedSites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+      try {
+        hosts.applyBlockedSites(data.blockedSites.filter((site) => !allowedSites.some((allowed) => allowed.toLowerCase() === site.toLowerCase())));
+      } catch (error) {
+        console.error('Watchdog could not apply website blocks:', error.message);
+      }
     }
   }, 5000);
 }
@@ -271,6 +275,18 @@ function updateAllowedSites(sites) {
 function effectiveBlockedSites(data) {
   const allowed = new Set((data.allowedSites || []).map((site) => site.toLowerCase()));
   return (data.blockedSites || []).filter((site) => !allowed.has(site.toLowerCase()));
+}
+
+function reportHostsPermissionError(error) {
+  console.error('Website blocking requires Administrator permission:', error.message);
+  if (!isBackgroundAgent && mainWindow && !mainWindow.isDestroyed()) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Administrator permission required',
+      message: 'Website blocking is not active.',
+      detail: 'Run the terminal as Administrator and start the app again, or use the installed version which requests Administrator permission.'
+    });
+  }
 }
 
 function updateApps(appsList) {
@@ -349,7 +365,11 @@ app.whenReady().then(() => {
   startWatchdog();
 
   const data = store.load();
-  hosts.applyBlockedSites(effectiveBlockedSites(data));
+  try {
+    hosts.applyBlockedSites(effectiveBlockedSites(data));
+  } catch (error) {
+    reportHostsPermissionError(error);
+  }
   appBlocker.startAppBlocking(() => store.load().blockedApps);
   if (data.network?.agentEnabled !== false && (isBackgroundAgent || !usesBootAgent)) {
     networkAgent.startNetworkAgent({

@@ -4,7 +4,7 @@ const test = require('node:test');
 const { normalizeList, normalizeDuration } = require('../src/inputValidation');
 
 test('normalizeList removes blank, non-text, and duplicate entries', () => {
-  assert.deepEqual(normalizeList([' youtube.com ', '', 'youtube.com', null, 'reddit.com']), [
+  assert.deepEqual(normalizeList([' https://www.youtube.com/shorts ', '', 'youtube.com', null, 'reddit.com']), [
     'youtube.com',
     'reddit.com'
   ]);
