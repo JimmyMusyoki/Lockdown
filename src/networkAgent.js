@@ -170,8 +170,14 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       sendJson(response, 500, { error: error.message });
     }
   });
-  server.listen(port, '0.0.0.0');
-  server.on('error', (error) => console.error('Network agent failed:', error.message));
+  await new Promise((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0');
+  }).catch((error) => {
+    server = null;
+    throw new Error(`Network agent could not listen on port ${port}: ${error.message}`);
+  });
   return port;
 }
 
