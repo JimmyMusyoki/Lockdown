@@ -97,8 +97,8 @@
         </div>
         <section class="panel list-panel" data-tab-section="devices" data-device-step="local">
           <div class="panel-heading"><div class="panel-icon blue">◎</div><div><h3>Distracting websites</h3><p>One domain per line. Subdomains are covered automatically.</p></div></div>
-          <textarea id="sites-input" rows="7" placeholder="youtube.com&#10;facebook.com&#10;reddit.com" aria-label="Blocked websites"></textarea>
-          <div class="allowed-sites-box"><label>Always allow these websites<textarea id="allowed-sites-input" rows="3" placeholder="docs.google.com&#10;classroom.google.com" aria-label="Allowed websites"></textarea></label><span class="field-note">Allowed entries override the blocked list.</span></div>
+          <textarea id="sites-input" rows="7" tabindex="0" spellcheck="false" placeholder="youtube.com&#10;facebook.com&#10;reddit.com" aria-label="Blocked websites"></textarea>
+          <div class="allowed-sites-box"><label>Always allow these websites<textarea id="allowed-sites-input" rows="3" tabindex="0" spellcheck="false" placeholder="docs.google.com&#10;classroom.google.com" aria-label="Allowed websites"></textarea></label><span class="field-note">Allowed entries override the blocked list.</span></div>
           <div class="panel-footer"><span class="field-note">One domain per line. Changes apply after saving.</span><button id="save-sites"><span>Save website rules</span><span class="button-arrow">→</span></button></div>
         </section>
 
@@ -108,7 +108,7 @@
         </div>
         <section class="panel list-panel" data-tab-section="devices" data-device-step="local">
           <div class="panel-heading"><div class="panel-icon orange">▦</div><div><h3>Distracting applications</h3><p>Use the process name, such as <code>steam.exe</code>.</p></div></div>
-          <textarea id="apps-input" rows="7" placeholder="steam.exe&#10;discord.exe&#10;spotify.exe" aria-label="Blocked applications"></textarea>
+          <textarea id="apps-input" rows="7" tabindex="0" spellcheck="false" placeholder="steam.exe&#10;discord.exe&#10;spotify.exe" aria-label="Blocked applications"></textarea>
           <div class="panel-footer"><span class="field-note">Running matches will be closed automatically.</span><button id="save-apps"><span>Save list</span><span class="button-arrow">→</span></button></div>
         </section>
 

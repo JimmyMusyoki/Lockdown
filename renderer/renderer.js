@@ -882,6 +882,7 @@ shutdownSelectedBtn.addEventListener('click', () => {
 openLocalRulesBtn.addEventListener('click', () => {
   setDeviceStep('local');
   document.getElementById('websites').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  sitesInput.focus();
 });
 selectAllSaved.addEventListener('change', () => {
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => { input.checked = selectAllSaved.checked; });

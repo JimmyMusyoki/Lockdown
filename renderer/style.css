@@ -187,7 +187,7 @@ main { padding: 0 54px 50px; }
 h3 { margin: 0 0 5px; font-size: 15px; letter-spacing: -.2px; }
 .panel-heading p, .timer-copy p, .network-info p { color: var(--muted); margin: 0; font-size: 12px; line-height: 1.5; }
 code { color: var(--green); font-size: 11px; }
-textarea, input { width: 100%; border: 1px solid #d7dfd8; border-radius: 7px; outline: none; background: #fbfcfa; color: var(--ink); padding: 12px; }
+textarea, input { width: 100%; border: 1px solid #d7dfd8; border-radius: 7px; outline: none; background: #fbfcfa; color: var(--ink); padding: 12px; user-select: text; pointer-events: auto; }
 textarea { min-height: 132px; resize: vertical; line-height: 1.7; font: 13px Consolas, monospace; }
 .allowed-sites-box { margin-top: 14px; padding: 13px; border: 1px solid #dce6dc; border-radius: 8px; background: #f4f8f4; }.allowed-sites-box label { display: block; color: var(--ink); }.allowed-sites-box textarea { min-height: 70px; margin-top: 7px; background: var(--white); }.allowed-sites-box .field-note { display: block; margin-top: 7px; }
 textarea:focus, input:focus { border-color: #83b39a; box-shadow: 0 0 0 3px rgba(31, 128, 99, .1); }
