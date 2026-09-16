@@ -21,14 +21,13 @@ test('seedTestData supports isolated overrides', () => {
   assert.deepEqual(seedTestData().blockedSites, ['example.com', 'social.test']);
 });
 
-test('startLock creates an active timed lock with a hashed password', () => {
+test('startLock creates an active timed lock without storing password data', () => {
   const before = Date.now();
-  const lock = lockManager.startLock(5, TEST_PASSWORD);
+  const lock = lockManager.startLock(5);
   const after = Date.now();
 
   assert.equal(lock.active, true);
-  assert.equal(lock.passwordHash, lockManager.hashPassword(TEST_PASSWORD));
-  assert.notEqual(lock.passwordHash, TEST_PASSWORD);
+  assert.equal(lock.passwordHash, undefined);
   assert.ok(new Date(lock.unlockAt).getTime() >= before + 5 * 60 * 1000);
   assert.ok(new Date(lock.unlockAt).getTime() <= after + 5 * 60 * 1000);
   assert.equal(lockManager.isLocked(lock), true);

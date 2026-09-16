@@ -17,14 +17,11 @@ const DEFAULT_DATA = {
   schedules: [],         // [{ id, days: [1,2,3,4,5], start: "09:00", end: "17:00" }]
   lock: {
     active: false,
-    unlockAt: null,      // ISO timestamp — cannot be unlocked before this
-    passwordHash: null
+    unlockAt: null      // ISO timestamp — cannot be unlocked before this
   },
   network: {
     agentEnabled: true,
     port: 47821,
-    passwordHash: null,
-    adminPasswordHash: null,
     groups: []
   },
   activity: []

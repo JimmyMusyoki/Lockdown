@@ -1,9 +1,3 @@
-const crypto = require('crypto');
-
-function hashPassword(plain) {
-  return crypto.createHash('sha256').update(plain).digest('hex');
-}
-
 function isLocked(lockState) {
   if (!lockState || !lockState.active) return false;
   if (!lockState.unlockAt) return true; // locked indefinitely until manually cleared
@@ -14,12 +8,11 @@ function isLocked(lockState) {
  * Starts a lock for `durationMinutes`. The lock keeps blocking active until
  * unlockAt passes, while the block lists remain editable.
  */
-function startLock(durationMinutes, password) {
+function startLock(durationMinutes) {
   const unlockAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
   return {
     active: true,
-    unlockAt,
-    passwordHash: password ? hashPassword(password) : null
+    unlockAt
   };
 }
 
@@ -28,4 +21,4 @@ function timeRemainingMs(lockState) {
   return Math.max(0, new Date(lockState.unlockAt) - new Date());
 }
 
-module.exports = { isLocked, startLock, timeRemainingMs, hashPassword };
+module.exports = { isLocked, startLock, timeRemainingMs };

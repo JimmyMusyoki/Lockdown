@@ -50,14 +50,6 @@ const blockWebsitesSelectedBtn = document.getElementById('block-websites-selecte
 const blockAppsSelectedBtn = document.getElementById('block-apps-selected');
 const shutdownSelectedBtn = document.getElementById('shutdown-selected');
 const openLocalRulesBtn = document.getElementById('open-local-rules');
-const agentPasswordDialog = document.getElementById('agent-password-dialog');
-const agentPasswordDialogInput = document.getElementById('agent-password-dialog-input');
-const agentPasswordCancel = document.getElementById('agent-password-cancel');
-const agentPasswordSubmit = document.getElementById('agent-password-submit');
-const passwordSetupDialog = document.getElementById('password-setup-dialog');
-const passwordSetupInput = document.getElementById('password-setup-input');
-const passwordSetupConfirm = document.getElementById('password-setup-confirm');
-const passwordSetupSave = document.getElementById('password-setup-save');
 const groupSitesBtn = document.getElementById('group-sites');
 const groupAppsBtn = document.getElementById('group-apps');
 const groupLockBtn = document.getElementById('group-lock');
@@ -98,8 +90,6 @@ let activeTab = 'overview';
 let agentSessionExpiresAt = 0;
 let savedNetworkRefreshRunning = false;
 let selectedSavedKeys = new Set();
-let passwordDialogResolve;
-let agentPasswordValue = '';
 let editingGroupId = null;
 let visibleGroupId = null;
 const gamingApps = ['steam.exe', 'epicgameslauncher.exe', 'riotclientservices.exe', 'battle.net.exe'];
@@ -117,84 +107,22 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 2600);
 }
 
-function agentSessionPassword(promptForPassword = true) {
-  if (!agentPasswordValue && promptForPassword) {
-    return requestAgentPassword();
-  }
-  return agentPasswordValue || null;
+function agentSessionPassword() {
+  return 'no-password';
 }
 
 async function unlockAgentSession() {
-  const password = agentPasswordValue || await requestAgentPassword();
-  if (!password) return false;
-  agentPasswordValue = password;
-  updateAgentSessionStatus();
-  showToast('Authentication accepted');
   return true;
 }
 
 function updateAgentSessionStatus() {
   if (!agentSessionStatus) return;
-  if (!agentPasswordValue) {
-    agentSessionStatus.textContent = 'Locked';
-    agentSessionStatus.classList.remove('connected');
-    return;
-  }
   agentSessionStatus.textContent = 'Authenticated';
   agentSessionStatus.classList.add('connected');
 }
 
-function requestAgentPassword() {
-  return new Promise((resolve) => {
-    passwordDialogResolve = resolve;
-    agentPasswordDialogInput.value = '';
-    agentPasswordDialog.hidden = false;
-    agentPasswordDialogInput.removeAttribute('readonly');
-    agentPasswordDialogInput.disabled = false;
-    window.setTimeout(() => {
-      agentPasswordDialogInput.focus();
-      agentPasswordDialogInput.select();
-    }, 0);
-  });
-}
-
 async function requireAuthentication() {
-  const password = await requestAgentPassword();
-  if (!password) return null;
-  agentPasswordValue = password;
-  updateAgentSessionStatus();
-  return password;
-}
-
-function finishPasswordDialog(password) {
-  agentPasswordDialog.hidden = true;
-  const resolve = passwordDialogResolve;
-  passwordDialogResolve = null;
-  if (!password) {
-    resolve?.(null);
-    return;
-  }
-  agentPasswordValue = password;
-  updateAgentSessionStatus();
-  resolve?.(password);
-}
-
-async function saveSharedPassword() {
-  const password = passwordSetupInput.value;
-  if (password.length < 12) return showToast('Use at least 12 characters.');
-  if (password !== passwordSetupConfirm.value) return showToast('The passwords do not match.');
-  passwordSetupSave.disabled = true;
-  try {
-    await window.api.setNetworkPasswords(password, password);
-    passwordSetupDialog.hidden = true;
-    agentPasswordValue = password;
-    updateAgentSessionStatus();
-    showToast('Shared administrator password saved. Set this same password on every lab PC.');
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    passwordSetupSave.disabled = false;
-  }
+  return true;
 }
 
 function updateCounts() {
@@ -432,8 +360,7 @@ function updateSavedSelectionState() {
 }
 
 async function refreshSavedPcStatuses(devices) {
-  const password = await agentSessionPassword(false);
-  if (!password) return;
+  const password = agentSessionPassword();
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
     try {
@@ -464,11 +391,11 @@ async function runBulkCommand(devices, command, message) {
     return;
   }
   const isAdmin = command === 'shutdown';
-  const password = await requireAuthentication();
-  if (!devices.length || !password) {
-    showToast('Enter the agent password first');
+  if (!devices.length) {
+    showToast('No remote PCs are selected');
     return;
   }
+  const password = agentSessionPassword();
   const payload = command === 'update-sites' ? sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'update-apps' ? appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'start-lock' ? { minutes: parseInt(lockMinutesInput.value, 10) || 60 } : null;
   [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = true; });
   const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator')));
@@ -587,7 +514,7 @@ window.api?.onNetworkSpeedStage?.((stage) => {
 });
 
 async function saveGroup() {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const name = groupNameInput.value.trim();
   const existingGroup = networkGroups.find((group) => group.id === editingGroupId);
   const devices = existingGroup ? existingGroup.devices : [];
@@ -607,7 +534,7 @@ async function saveGroup() {
 }
 
 async function assignSelectedDevices() {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const devices = selectedDevices();
   const group = networkGroups.find((item) => item.id === deviceGroupSelect.value);
   if (!devices.length || !group) {
@@ -650,7 +577,7 @@ function applyGroupSelection() {
 }
 
 async function deleteSelectedGroup() {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const group = networkGroups.find((item) => item.id === groupSelect.value);
   if (!group) {
     showToast('Choose a group to delete');
@@ -668,9 +595,9 @@ async function deleteSelectedGroup() {
 
 async function sendGroup(command, payload, message) {
   const devices = selectedDevices();
-  const password = await agentSessionPassword();
-  if (!devices.length || !password) {
-    showToast('Select devices and enter the agent password first');
+  const password = agentSessionPassword();
+  if (!devices.length) {
+    showToast('Select devices first');
     return;
   }
   groupStatus.textContent = `Sending to ${devices.length} device${devices.length === 1 ? '' : 's'}...`;
@@ -746,7 +673,7 @@ function setActiveTab(id) {
 }
 
 saveSitesBtn.addEventListener('click', async () => {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const sites = sitesInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
   const allowedSites = allowedSitesInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
   try {
@@ -760,7 +687,7 @@ saveSitesBtn.addEventListener('click', async () => {
 });
 
 saveAppsBtn.addEventListener('click', async () => {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const apps = appsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
   try {
     await window.api.updateApps(apps);
@@ -772,7 +699,7 @@ saveAppsBtn.addEventListener('click', async () => {
 });
 
 startLockBtn.addEventListener('click', async () => {
-  if (!await requireAuthentication()) return;
+  await requireAuthentication();
   const minutes = parseInt(lockMinutesInput.value, 10) || 60;
   if (!confirm(`Lock the block list for ${minutes} minutes? You will NOT be able to undo this early.`)) return;
   await window.api.startLock(minutes);
@@ -783,10 +710,7 @@ startLockBtn.addEventListener('click', async () => {
 sitesInput.addEventListener('input', updateCounts);
 appsInput.addEventListener('input', updateCounts);
 gamingMode.addEventListener('change', async () => {
-  if (!await requireAuthentication()) {
-    gamingMode.checked = !gamingMode.checked;
-    return;
-  }
+  await requireAuthentication();
   const apps = appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean);
   const updatedApps = gamingMode.checked
     ? [...new Set([...apps, ...gamingApps])]
@@ -853,13 +777,6 @@ selectAllSaved.addEventListener('change', () => {
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => { input.checked = selectAllSaved.checked; });
   updateSavedSelectionState();
 });
-agentPasswordSubmit.addEventListener('click', () => finishPasswordDialog(agentPasswordDialogInput.value));
-agentPasswordCancel.addEventListener('click', () => finishPasswordDialog(null));
-agentPasswordDialogInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') finishPasswordDialog(agentPasswordDialogInput.value);
-  if (event.key === 'Escape') finishPasswordDialog(null);
-});
-passwordSetupSave.addEventListener('click', saveSharedPassword);
 speedTestBtn.addEventListener('click', runSpeedTest);
 document.querySelectorAll('[data-go-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.goTab)));
 governorTestBtn.addEventListener('click', runGovernorTest);
@@ -893,12 +810,6 @@ window.api?.setAutomaticUpdates?.(automaticUpdates.checked);
 window.api?.getAppVersion?.().then((version) => { appVersion.textContent = `v${version}`; });
 window.api?.getUpdateStatus?.().then(renderUpdateStatus);
 window.api?.getNetworkGroups?.().then((groups) => { networkGroups = groups; renderGroups(); });
-window.api?.getNetworkAuth?.().then((auth) => {
-  if (!auth.operatorConfigured || !auth.adminConfigured) {
-    passwordSetupDialog.hidden = false;
-    passwordSetupInput.focus();
-  }
-});
 if (window.api?.getData) loadData();
 setInterval(refreshLockStatus, 1000);
 setInterval(refreshSavedNetwork, 30000);

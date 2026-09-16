@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const https = require('https');
 
@@ -41,8 +42,30 @@ let updateState = {
 
 function configureWindowsStartup() {
   if (process.platform !== 'win32' || isBackgroundAgent || usesBootAgent) return;
+
   const args = app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'];
-  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
+  try {
+    app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args, enabled: true });
+  } catch (error) {
+    console.warn('Current-user startup registration unavailable:', error.message);
+  }
+
+  try {
+    const command = `"${process.execPath}" --hidden`;
+    spawnSync('reg', [
+      'add',
+      'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
+      '/v',
+      'Lockdown Blocker',
+      '/t',
+      'REG_SZ',
+      '/d',
+      command,
+      '/f'
+    ], { stdio: 'ignore', windowsHide: true });
+  } catch (error) {
+    console.warn('Machine-wide startup registration unavailable:', error.message);
+  }
 }
 
 async function remoteCommand(host, password, command, payload, role = 'operator') {
@@ -81,7 +104,6 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
   const challengeResponse = await requestJson('GET', '/challenge');
   if (challengeResponse.status !== 200) throw new Error('Could not reach that device. Check its IP and firewall.');
   const { nonce } = challengeResponse.body;
-  const passwordHash = networkAgent.hashPassword(password);
   const request = {
     nonce,
     timestamp: Date.now(),
@@ -90,8 +112,7 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
     payload: payload === undefined ? null : payload,
     role
   };
-  const proof = networkAgent.createRequestProof(passwordHash, request);
-  const response = await requestJson('POST', '/command', { ...request, proof });
+  const response = await requestJson('POST', '/command', request);
   if (response.status < 200 || response.status >= 300) throw new Error(response.body.error || 'Remote command failed.');
   return response.body.data;
 }
@@ -290,21 +311,6 @@ function mergeNetworkGroup(group) {
   return groups;
 }
 
-function setNetworkPasswords(operatorPassword, adminPassword) {
-  if (typeof operatorPassword !== 'string' || operatorPassword.length < 12) {
-    throw new Error('Operator password must be at least 12 characters.');
-  }
-  if (typeof adminPassword !== 'string' || adminPassword.length < 12) {
-    throw new Error('Admin password must be at least 12 characters.');
-  }
-  const data = store.load();
-  data.network = data.network || {};
-  data.network.passwordHash = networkAgent.hashPassword(operatorPassword);
-  data.network.adminPasswordHash = networkAgent.hashPassword(adminPassword);
-  store.save(data);
-  return { operatorConfigured: true, adminConfigured: true };
-}
-
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
@@ -415,17 +421,8 @@ ipcMain.handle('get-lock-status', () => {
   };
 });
 
-ipcMain.handle('get-network-auth', () => {
-  const network = store.load().network || {};
-  return { operatorConfigured: Boolean(network.passwordHash), adminConfigured: Boolean(network.adminPasswordHash) };
-});
-
-ipcMain.handle('set-network-passwords', (_evt, { operatorPassword, adminPassword }) =>
-  setNetworkPasswords(operatorPassword, adminPassword)
-);
-
 ipcMain.handle('remote-command', (_evt, { host, password, command, payload, role }) =>
-  remoteCommand(host, password, command, payload, role)
+  remoteCommand(host, password || 'no-password', command, payload, role)
 );
 
 ipcMain.handle('discover-network', () => networkDiscovery.discoverNetwork());
