@@ -71,6 +71,7 @@ const groupAppsBtn = document.getElementById('group-apps');
 const groupLockBtn = document.getElementById('group-lock');
 const groupStatus = document.getElementById('group-status');
 const savedPcCount = document.getElementById('saved-pc-count');
+const syncSavedPcsBtn = document.getElementById('sync-saved-pcs');
 const refreshSavedPcsBtn = document.getElementById('refresh-saved-pcs');
 const savedPcsView = document.getElementById('saved-pcs');
 const savedPcCards = document.getElementById('saved-pc-cards');
@@ -444,6 +445,18 @@ async function runBulkCommand(devices, command, message) {
   }
   const isAdmin = command === 'shutdown';
   const password = agentSessionPassword();
+  let unreachableCount = 0;
+  if (command === 'shutdown') {
+    const checks = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, 'get-status', null, 'operator')));
+    const reachable = devices.filter((_device, index) => checks[index].status === 'fulfilled');
+    unreachableCount = devices.length - reachable.length;
+    if (!reachable.length) {
+      const failed = checks.find((result) => result.status === 'rejected');
+      showToast(remoteFailureMessage(failed?.reason, devices[0]));
+      return;
+    }
+    devices = reachable;
+  }
   const payload = command === 'update-sites' ? sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'update-apps' ? appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean) : command === 'start-lock' ? { minutes: parseInt(lockMinutesInput.value, 10) || 60 } : null;
   [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = true; });
   const results = await Promise.allSettled(devices.map((device) => window.api.remoteCommand(`${device.ip}:47821`, password, command, payload, isAdmin ? 'admin' : 'operator')));
@@ -456,7 +469,7 @@ async function runBulkCommand(devices, command, message) {
     ? remoteFailureMessage(failure?.reason, failedDevice)
     : 'Task failed';
   showToast(success
-    ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}${failure ? `; ${failureMessage}` : ''}`
+    ? `${message} on ${success}/${devices.length} saved PC${devices.length === 1 ? '' : 's'}${unreachableCount ? `; ${unreachableCount} unreachable` : ''}${failure ? `; ${failureMessage}` : ''}`
     : failureMessage);
   if (command !== 'shutdown') refreshSavedPcStatuses(devices);
 }
@@ -526,6 +539,28 @@ async function refreshSavedPcs() {
   } finally {
     refreshSavedPcsBtn.disabled = false;
     refreshSavedPcsBtn.firstElementChild.textContent = 'Refresh';
+  }
+}
+
+async function syncSavedPcs() {
+  if (!window.api?.discoverNetwork || !syncSavedPcsBtn) return;
+  syncSavedPcsBtn.disabled = true;
+  syncSavedPcsBtn.firstElementChild.textContent = 'Syncing...';
+  try {
+    const devices = await window.api.discoverNetwork();
+    discoveredDevices = devices;
+    renderDashboardDevices(devices);
+    await reconcileNetworkGroups(devices);
+    await synchronizeNetworkGroups();
+    renderDevices(devices);
+    await refreshSavedPcStatuses(savedDevices());
+    renderGroups();
+    showToast('Saved PCs synchronized');
+  } catch (error) {
+    showToast(`Sync failed: ${error?.message || 'Check the network and try again.'}`);
+  } finally {
+    syncSavedPcsBtn.disabled = false;
+    syncSavedPcsBtn.firstElementChild.textContent = 'Sync PCs';
   }
 }
 
@@ -644,8 +679,7 @@ async function syncNetworkGroup(group) {
 
 function networkPeers() {
   const peersByKey = new Map();
-  const groupedDevices = networkGroups.flatMap((group) => group.devices || []);
-  [...discoveredDevices, ...savedDevices(), ...groupedDevices].forEach((device) => {
+  savedDevices().forEach((device) => {
     if (device.local) return;
     const key = normalizedMac(device.mac) || device.ip;
     if (key) peersByKey.set(key, { ...peersByKey.get(key), ...device });
@@ -908,6 +942,7 @@ gamingMode.addEventListener('change', async () => {
   showToast(gamingMode.checked ? 'Gaming apps are now blocked' : 'Gaming app blocking disabled');
 });
 scanNetworkBtn.addEventListener('click', scanNetwork);
+syncSavedPcsBtn?.addEventListener('click', syncSavedPcs);
 refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);
 addGroupBtn.addEventListener('click', () => {
   editingGroupId = null;

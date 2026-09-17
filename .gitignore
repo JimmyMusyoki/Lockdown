@@ -1,5 +1,7 @@
 node_modules/
 .env
 dist/
+dist-sync/
+dist-sync2/
 build/
 *.log

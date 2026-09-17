@@ -138,11 +138,13 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
 
       if (body.command === 'shutdown') {
         sendJson(response, 202, { ok: true, data: { scheduled: true, delaySeconds: 5 } });
-        setTimeout(() => {
-          runShutdown().catch((error) => {
-            if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
-          });
-        }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
+        response.once('finish', () => {
+          setTimeout(() => {
+            runShutdown().catch((error) => {
+              if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
+            });
+          }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
+        });
         return;
       }
 
