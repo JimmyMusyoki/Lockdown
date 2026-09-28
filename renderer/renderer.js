@@ -105,10 +105,6 @@ const dashboardOffline = document.getElementById('dashboard-offline');
 const dashboardDeviceList = document.getElementById('dashboard-device-list');
 const hotspotSharingDisabled = document.getElementById('hotspot-sharing-disabled');
 const hotspotSharingStatus = document.getElementById('hotspot-sharing-status');
-const screenViewingEnabled = document.getElementById('screen-viewing-enabled');
-const screenViewingStatus = document.getElementById('screen-viewing-status');
-const fileSharingEnabled = document.getElementById('file-sharing-enabled');
-const fileSharingStatus = document.getElementById('file-sharing-status');
 let speedRefreshTimer;
 let discoveredDevices = [];
 let usageReadings = [];
@@ -414,11 +410,13 @@ function updateSavedSelectionState() {
   const selected = inputs.filter((input) => input.checked).length;
   selectAllSaved.checked = inputs.length > 0 && selected === inputs.length;
   selectAllSaved.indeterminate = selected > 0 && selected < inputs.length;
-  viewSelectedScreenBtn.disabled = selected !== 1 || selectedSavedDevices().some(isCurrentDevice);
-  openSelectedFileSharingBtn.disabled = selected !== 1 || selectedSavedDevices().some(isCurrentDevice);
+  const selectedDevices = selectedSavedDevices();
+  const remoteSelectedCount = selectedDevices.filter((device) => !isCurrentDevice(device)).length;
+  viewSelectedScreenBtn.disabled = selected !== 1 || remoteSelectedCount !== 1;
+  openSelectedFileSharingBtn.disabled = remoteSelectedCount === 0;
   remoteToolsHint.textContent = selected === 1
     ? 'One PC selected'
-    : selected > 1 ? 'Select one PC for screen or file tools' : 'Select one PC to continue';
+    : selected > 1 ? `${remoteSelectedCount} remote PCs selected` : 'Select one or more PCs to continue';
   groupSelectionHelp.textContent = selected
     ? `${selected} PC${selected === 1 ? '' : 's'} selected — choose an action below.`
     : 'Select one PC, several PCs, or every PC in this group.';
@@ -789,14 +787,6 @@ async function loadData() {
   sitesInput.value = data.blockedSites.join('\n');
   allowedSitesInput.value = (data.allowedSites || []).join('\n');
   appsInput.value = data.blockedApps.join('\n');
-  if (screenViewingEnabled) {
-    screenViewingEnabled.checked = data.network?.screenViewingEnabled === true;
-    screenViewingStatus.textContent = screenViewingEnabled.checked ? 'Remote screen viewing is enabled for this PC.' : 'Remote screen viewing is disabled.';
-  }
-  if (fileSharingEnabled) {
-    fileSharingEnabled.checked = data.network?.fileSharingEnabled === true;
-    fileSharingStatus.textContent = fileSharingEnabled.checked ? 'File sharing is enabled for this PC.' : 'File sharing is disabled.';
-  }
   if (hotspotSharingDisabled) {
     hotspotSharingDisabled.checked = data.hotspotSharingDisabled === true;
     hotspotSharingStatus.textContent = hotspotSharingDisabled.checked ? 'Hotspot sharing is disabled.' : 'Hotspot sharing is allowed.';
@@ -982,34 +972,6 @@ hotspotSharingDisabled?.addEventListener('change', async () => {
     hotspotSharingDisabled.disabled = false;
   }
 });
-screenViewingEnabled?.addEventListener('change', async () => {
-  const requestedState = screenViewingEnabled.checked;
-  screenViewingEnabled.disabled = true;
-  try {
-    await window.api.setScreenViewingEnabled(requestedState);
-    screenViewingStatus.textContent = requestedState ? 'Remote screen viewing is enabled for this PC.' : 'Remote screen viewing is disabled.';
-    showToast(requestedState ? 'Remote screen viewing enabled' : 'Remote screen viewing disabled');
-  } catch (error) {
-    screenViewingEnabled.checked = !requestedState;
-    showToast(error.message || 'Could not update screen-viewing access');
-  } finally {
-    screenViewingEnabled.disabled = false;
-  }
-});
-fileSharingEnabled?.addEventListener('change', async () => {
-  const requestedState = fileSharingEnabled.checked;
-  fileSharingEnabled.disabled = true;
-  try {
-    await window.api.setFileSharingEnabled(requestedState);
-    fileSharingStatus.textContent = requestedState ? 'File sharing is enabled for this PC.' : 'File sharing is disabled.';
-    showToast(requestedState ? 'File sharing enabled' : 'File sharing disabled');
-  } catch (error) {
-    fileSharingEnabled.checked = !requestedState;
-    showToast(error.message || 'Could not update file-sharing access');
-  } finally {
-    fileSharingEnabled.disabled = false;
-  }
-});
 scanNetworkBtn.addEventListener('click', scanNetwork);
 syncSavedPcsBtn?.addEventListener('click', syncSavedPcs);
 refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);
@@ -1088,11 +1050,13 @@ viewSelectedScreenBtn.addEventListener('click', async () => {
   }
 });
 openSelectedFileSharingBtn.addEventListener('click', async () => {
-  const [device] = selectedSavedDevices();
-  if (!device || isCurrentDevice(device)) return showToast('Select one remote PC first');
+  const destinations = selectedSavedDevices().filter((device) => !isCurrentDevice(device));
+  if (!destinations.length) return showToast('Select at least one remote PC first');
+  const availableDestinations = savedDevices().filter((device) => !isCurrentDevice(device));
+  const toRemotePc = (device) => ({ host: `${device.ip}:47821`, name: device.name || device.ip });
   openSelectedFileSharingBtn.disabled = true;
   try {
-    await window.api.openFileSharing(`${device.ip}:47821`, device.name || device.ip);
+    await window.api.openFileSharing(destinations.map(toRemotePc), availableDestinations.map(toRemotePc), availableDestinations.map(toRemotePc));
   } catch (error) {
     showToast(error.message || 'Could not open file sharing');
   } finally {

@@ -34,9 +34,11 @@ npm start
 
 Install and run the app on each desktop on the same LAN. Each logged-in desktop exposes an HTTPS agent on port `47821` by default. Packaged builds start the desktop app hidden at user sign-in so remote commands remain available; the separate boot agent continues applying local restrictions before sign-in. The controller pins each agent's first observed certificate for the current session and rejects certificate changes.
 
-Select one saved PC to use the screen and file-sharing icons above the device list. Their hover labels describe each action. To allow unattended viewing, enable **Allow remote screen viewing on this PC** in the Network section on each target PC. The preview refreshes about once per second at up to 960×540, expires after five minutes, and can be stopped from that PC's tray menu. Screen viewing is unavailable before a user signs in.
+Select one saved PC to use the screen icon above the device list. Select one or more PCs to open file sharing. The icons show their function on hover. Screen previews refresh about once per second at up to 960×540, expire after five minutes, and can be stopped from the target PC's tray menu. Screen viewing is unavailable before a user signs in.
 
-Enable **Allow file sharing on this PC** in the Network section on each PC that should receive or serve files. The file-sharing view lets you choose local files to send and download files available on the selected PC. Received files are stored under `C:\ProgramData\Lockdown Blocker\shared-files`; each file is limited to 50 MB.
+The file-sharing view lets you choose one PC as the source, download files locally, send local files to the selected destinations, or copy a source PC's file directly to one or all other saved PCs. Received files are stored under `C:\ProgramData\Lockdown Blocker\shared-files`; each file is limited to 50 MB.
+
+Screen viewing and file sharing do not require a prompt or opt-in on the target PC. Any reachable PC that can connect to the agent port on your local network may use these features, so use them only on a trusted, firewall-protected LAN. The boot-time SYSTEM agent does not provide screen viewing; the signed-in desktop agent must be running.
 
 The installed build creates a Windows Task Scheduler task named **Lockdown Blocker Background Agent**. It runs as `SYSTEM` when Windows powers on, before any account signs in, so hosts and application rules apply to every local account. Rules and certificates are stored in `C:\ProgramData\Lockdown Blocker`, letting the background agent and administrator console share the same state. The boot agent has no visible window; the normal app window remains the administrator console.
 

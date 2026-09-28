@@ -27,6 +27,8 @@ let mainWindow;
 let speedWindow;
 let screenViewerWindow;
 let fileSharingWindow;
+let screenViewerHost;
+let remoteScreenSessionId;
 let remoteScreenSession;
 let tray;
 let stopScreenSharingMenuItem;
@@ -222,14 +224,40 @@ async function downloadSharedFile(host, file) {
     defaultPath: path.join(app.getPath('downloads'), path.basename(file.name))
   });
   if (result.canceled || !result.filePath) return false;
-  const temporaryPath = `${result.filePath}.${crypto.randomUUID()}.download`;
+  await downloadSharedFileToPath(host, file, result.filePath);
+  return true;
+}
+
+async function downloadSharedFileToPath(host, file, destinationPath) {
+  const id = String(file?.id || '');
+  if (!/^[\da-f-]{36}$/i.test(id)) throw new Error('Invalid shared-file ID.');
+  const temporaryPath = `${destinationPath}.${crypto.randomUUID()}.download`;
   try {
-    await requestSharedFiles(host, 'GET', `/files/download?id=${encodeURIComponent(file.id)}`, { downloadPath: temporaryPath });
-    await fs.promises.rename(temporaryPath, result.filePath);
-    return true;
+    await requestSharedFiles(host, 'GET', `/files/download?id=${encodeURIComponent(id)}`, { downloadPath: temporaryPath });
+    await fs.promises.rename(temporaryPath, destinationPath);
   } catch (error) {
     await fs.promises.rm(temporaryPath, { force: true });
     throw error;
+  }
+}
+
+async function relaySharedFile(sourceHost, file, destinationHosts) {
+  const source = validateRemoteHost(sourceHost);
+  const destinations = [...new Set(destinationHosts.map(validateRemoteHost))].filter((host) => host !== source);
+  if (!destinations.length) throw new Error('Choose at least one destination PC other than the source.');
+  const transferDirectory = path.join(app.getPath('temp'), 'Lockdown Blocker Transfers');
+  await fs.promises.mkdir(transferDirectory, { recursive: true });
+  const localCopy = path.join(transferDirectory, `${crypto.randomUUID()}-${path.basename(file?.name || 'shared-file')}`);
+  try {
+    await downloadSharedFileToPath(source, file, localCopy);
+    const results = await Promise.allSettled(destinations.map((host) => uploadSharedFile(host, localCopy)));
+    return results.map((result, index) => ({
+      host: destinations[index],
+      ok: result.status === 'fulfilled',
+      error: result.status === 'rejected' ? result.reason.message : null
+    }));
+  } finally {
+    await fs.promises.rm(localCopy, { force: true });
   }
 }
 
@@ -351,6 +379,7 @@ function createSpeedWindow() {
 }
 
 function createScreenViewer(host, name) {
+  screenViewerHost = host;
   if (screenViewerWindow && !screenViewerWindow.isDestroyed()) {
     screenViewerWindow.setTitle(`Live screen · ${name}`);
     screenViewerWindow.loadFile(path.join(__dirname, 'renderer', 'screen.html'), { query: { host, name } });
@@ -372,11 +401,20 @@ function createScreenViewer(host, name) {
     }
   });
   screenViewerWindow.loadFile(path.join(__dirname, 'renderer', 'screen.html'), { query: { host, name } });
-  screenViewerWindow.on('closed', () => { screenViewerWindow = null; });
+  screenViewerWindow.on('closed', () => {
+    screenViewerWindow = null;
+    screenViewerHost = null;
+    remoteScreenSessionId = null;
+  });
 }
 
-function createFileSharingWindow(host, name) {
-  const options = { host, name };
+function createFileSharingWindow(destinations, availableDestinations, sources, name) {
+  const options = {
+    destinations: JSON.stringify(destinations),
+    availableDestinations: JSON.stringify(availableDestinations),
+    sources: JSON.stringify(sources),
+    name
+  };
   if (fileSharingWindow && !fileSharingWindow.isDestroyed()) {
     fileSharingWindow.setTitle(`File sharing · ${name}`);
     fileSharingWindow.loadFile(path.join(__dirname, 'renderer', 'file-sharing.html'), { query: options });
@@ -403,9 +441,6 @@ function createFileSharingWindow(host, name) {
 
 async function authorizeScreenView(address) {
   if (isBackgroundAgent) throw new Error('Screen viewing requires an active desktop session.');
-  if (store.load().network?.screenViewingEnabled !== true) {
-    throw new Error('This PC has not enabled remote screen viewing. Turn it on in the Network section on that PC.');
-  }
   if (remoteScreenSession && Date.now() < remoteScreenSession.expiresAt) {
     throw new Error('Another screen-view session is already active.');
   }
@@ -416,7 +451,7 @@ async function authorizeScreenView(address) {
 }
 
 async function captureScreenFrame(sessionId) {
-  if (store.load().network?.screenViewingEnabled !== true || !remoteScreenSession || remoteScreenSession.id !== sessionId || Date.now() >= remoteScreenSession.expiresAt) {
+  if (!remoteScreenSession || remoteScreenSession.id !== sessionId || Date.now() >= remoteScreenSession.expiresAt) {
     remoteScreenSession = null;
     if (stopScreenSharingMenuItem) stopScreenSharingMenuItem.enabled = false;
     recordActivity('Remote screen sharing ended', 'Disabled, expired, or stopped');
@@ -434,7 +469,7 @@ async function captureScreenFrame(sessionId) {
 }
 
 function stopScreenView(sessionId) {
-  if (remoteScreenSession?.id !== sessionId) return false;
+  if (!remoteScreenSession || (sessionId && remoteScreenSession.id !== sessionId)) return false;
   remoteScreenSession = null;
   if (stopScreenSharingMenuItem) stopScreenSharingMenuItem.enabled = false;
   recordActivity('Remote screen sharing ended', 'Stopped from the local tray menu or viewer');
@@ -643,7 +678,6 @@ app.whenReady().then(() => {
         requestScreenView: authorizeScreenView,
         captureScreenFrame,
         stopScreenView,
-        isFileSharingEnabled: () => store.load().network?.fileSharingEnabled === true,
         sharedFilesDirectory: path.join(store.DATA_DIR, 'shared-files'),
         certificateDirectory: path.join(store.DATA_DIR, 'agent-certificate'),
         port: data.network?.port || networkAgent.DEFAULT_PORT
@@ -679,25 +713,6 @@ ipcMain.handle('set-hotspot-sharing-disabled', (_evt, disabled) => {
   store.save(data);
   recordActivity(preference ? 'Hotspot sharing disabled' : 'Hotspot sharing allowed', 'Windows Internet Connection Sharing');
   return { ...result, disabled: preference };
-});
-
-ipcMain.handle('set-screen-viewing-enabled', (_evt, enabled) => {
-  if (isBackgroundAgent) throw new Error('Change screen-viewing access from the signed-in desktop app.');
-  const data = store.load();
-  data.network = { ...(data.network || {}), screenViewingEnabled: Boolean(enabled) };
-  store.save(data);
-  if (!data.network.screenViewingEnabled && remoteScreenSession) stopScreenView(remoteScreenSession.id);
-  recordActivity(data.network.screenViewingEnabled ? 'Remote screen viewing enabled' : 'Remote screen viewing disabled', 'Local network access setting');
-  return data.network.screenViewingEnabled;
-});
-
-ipcMain.handle('set-file-sharing-enabled', (_evt, enabled) => {
-  if (isBackgroundAgent) throw new Error('Change file-sharing access from the signed-in desktop app.');
-  const data = store.load();
-  data.network = { ...(data.network || {}), fileSharingEnabled: Boolean(enabled) };
-  store.save(data);
-  recordActivity(data.network.fileSharingEnabled ? 'File sharing enabled' : 'File sharing disabled', 'Local network access setting');
-  return data.network.fileSharingEnabled;
 });
 
 ipcMain.handle('get-app-version', () => app.getVersion());
@@ -801,9 +816,31 @@ ipcMain.handle('clear-temporary-unblock', () => {
   return true;
 });
 
-ipcMain.handle('remote-command', (_evt, { host, password, command, payload, role }) =>
-  remoteCommand(host, password || 'no-password', command, payload, role)
-);
+ipcMain.handle('remote-command', async (_evt, { host, password, command, payload, role }) => {
+  const address = validateRemoteHost(host);
+  const sharedPassword = password || 'no-password';
+  if (command === 'shutdown' && screenViewerHost === address && remoteScreenSessionId) {
+    if (screenViewerWindow && !screenViewerWindow.isDestroyed()) {
+      screenViewerWindow.webContents.send('remote-screen-ending');
+    }
+    try {
+      await remoteCommand(address, sharedPassword, 'stop-screen-view', { sessionId: remoteScreenSessionId }, 'operator');
+    } catch (_) {
+      // Continue shutdown if the remote screen session already expired or disconnected.
+    }
+    remoteScreenSessionId = null;
+    if (screenViewerWindow && !screenViewerWindow.isDestroyed()) screenViewerWindow.close();
+  }
+
+  const result = await remoteCommand(address, sharedPassword, command, payload, role);
+  if (command === 'start-screen-view' && result?.sessionId && screenViewerHost === address) {
+    remoteScreenSessionId = result.sessionId;
+  }
+  if (command === 'stop-screen-view' && (!payload?.sessionId || payload.sessionId === remoteScreenSessionId)) {
+    remoteScreenSessionId = null;
+  }
+  return result;
+});
 
 ipcMain.handle('open-screen-view', (_evt, { host, name }) => {
   const address = validateRemoteHost(host);
@@ -811,24 +848,46 @@ ipcMain.handle('open-screen-view', (_evt, { host, name }) => {
   return true;
 });
 
-ipcMain.handle('open-file-sharing', (_evt, { host, name }) => {
-  const address = validateRemoteHost(host);
-  createFileSharingWindow(address, String(name || address).slice(0, 80));
+ipcMain.handle('open-file-sharing', (_evt, { destinations, availableDestinations, sources }) => {
+  const normalizePcs = (pcs) => {
+    if (!Array.isArray(pcs) || pcs.length > 100) throw new Error('Select between one and 100 remote PCs.');
+    return [...new Map(pcs.map((pc) => {
+      const host = validateRemoteHost(pc?.host);
+      return [host, { host, name: String(pc?.name || host).slice(0, 80) }];
+    })).values()];
+  };
+  const targets = normalizePcs(destinations);
+  const available = normalizePcs(availableDestinations);
+  const sourcePcs = normalizePcs(sources);
+  if (!targets.length) throw new Error('Select at least one destination PC.');
+  createFileSharingWindow(targets, available, sourcePcs, targets.length === 1 ? targets[0].name : `${targets.length} PCs`);
   return true;
 });
 
-ipcMain.handle('pick-and-send-shared-files', async (_evt, host) => {
-  validateRemoteHost(host);
+ipcMain.handle('pick-and-send-shared-files', async (_evt, hosts) => {
+  if (!Array.isArray(hosts) || hosts.length < 1 || hosts.length > 100) throw new Error('Select between one and 100 remote PCs.');
+  hosts = [...new Set(hosts.map(validateRemoteHost))];
   const result = await dialog.showOpenDialog(fileSharingWindow && !fileSharingWindow.isDestroyed() ? fileSharingWindow : mainWindow, {
-    title: 'Choose files to share with this PC',
+    title: `Choose files to send to ${hosts.length} PC${hosts.length === 1 ? '' : 's'}`,
     properties: ['openFile', 'multiSelections']
   });
   if (result.canceled) return [];
-  const uploads = await Promise.allSettled(result.filePaths.map((filePath) => uploadSharedFile(host, filePath)));
-  return uploads.map((upload, index) => upload.status === 'fulfilled'
-    ? { ok: true, file: upload.value }
-    : { ok: false, name: path.basename(result.filePaths[index]), error: upload.reason.message });
+  return Promise.all(result.filePaths.map(async (filePath) => {
+    const uploads = await Promise.allSettled(hosts.map((host) => uploadSharedFile(host, filePath)));
+    return {
+      name: path.basename(filePath),
+      destinations: uploads.map((upload, index) => ({
+        host: hosts[index],
+        ok: upload.status === 'fulfilled',
+        error: upload.status === 'rejected' ? upload.reason.message : null
+      }))
+    };
+  }));
 });
+
+ipcMain.handle('relay-shared-file', (_evt, { sourceHost, file, destinationHosts }) =>
+  relaySharedFile(validateRemoteHost(sourceHost), file, destinationHosts)
+);
 
 ipcMain.handle('list-shared-files', (_evt, host) => listSharedFiles(validateRemoteHost(host)));
 

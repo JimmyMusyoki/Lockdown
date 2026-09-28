@@ -40,25 +40,20 @@ test('request proof covers command, payload, role, and request metadata', () => 
   assert.notEqual(proof, createRequestProof(hashPassword('test-password'), { ...base, requestId: 'different-request-123' }));
 });
 
-test('shared files require local enablement and transfer through a one-use challenge', async () => {
+test('shared files transfer through a one-use challenge without target-side opt-in', async () => {
   const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lockdown-file-share-'));
   const portReservation = net.createServer();
   await new Promise((resolve) => portReservation.listen(0, '127.0.0.1', resolve));
   const { port } = portReservation.address();
   await new Promise((resolve) => portReservation.close(resolve));
-  let enabled = false;
-
   try {
     await startNetworkAgent({
       getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
-      isFileSharingEnabled: () => enabled,
       sharedFilesDirectory: path.join(temporaryDirectory, 'shared'),
       certificateDirectory: path.join(temporaryDirectory, 'certificates'),
       port
     });
 
-    assert.equal((await requestAgent(port, '/files/list')).status, 403);
-    enabled = true;
     const listNonce = await getChallenge(port);
     const initialList = await requestAgent(port, '/files/list', { headers: { 'x-lockdown-nonce': listNonce } });
     assert.deepEqual(JSON.parse(initialList.body.toString()).files, []);
@@ -78,6 +73,44 @@ test('shared files require local enablement and transfer through a one-use chall
     const download = await requestAgent(port, `/files/download?id=${sharedFile.id}`, { headers: { 'x-lockdown-nonce': downloadNonce } });
     assert.equal(download.status, 200);
     assert.deepEqual(download.body, content);
+  } finally {
+    stopNetworkAgent();
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('shutdown ends screen sharing before acknowledging the shutdown request', async () => {
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lockdown-shutdown-'));
+  const portReservation = net.createServer();
+  await new Promise((resolve) => portReservation.listen(0, '127.0.0.1', resolve));
+  const { port } = portReservation.address();
+  await new Promise((resolve) => portReservation.close(resolve));
+  let screenStopped = false;
+
+  try {
+    await startNetworkAgent({
+      getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
+      stopScreenView: () => { screenStopped = true; },
+      scheduleShutdown: () => {},
+      certificateDirectory: path.join(temporaryDirectory, 'certificates'),
+      port
+    });
+
+    const nonce = await getChallenge(port);
+    const response = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce,
+        timestamp: Date.now(),
+        requestId: 'shutdown-request-12345678',
+        command: 'shutdown',
+        payload: null,
+        role: 'admin'
+      })
+    });
+    assert.equal(response.status, 202);
+    assert.equal(screenStopped, true);
   } finally {
     stopNetworkAgent();
     await fs.rm(temporaryDirectory, { recursive: true, force: true });

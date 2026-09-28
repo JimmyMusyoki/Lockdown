@@ -90,11 +90,7 @@ async function listSharedFiles(directory) {
   return files.filter(Boolean).sort((left, right) => right.addedAt.localeCompare(left.addedAt));
 }
 
-async function handleSharedFileRequest(request, response, url, directory, isFileSharingEnabled) {
-  if (!isFileSharingEnabled?.()) {
-    sendJson(response, 403, { error: 'File sharing is disabled on this PC.' });
-    return;
-  }
+async function handleSharedFileRequest(request, response, url, directory) {
   const nonce = request.headers['x-lockdown-nonce'] || url.searchParams.get('nonce');
   if (!nonce || !pendingNonces.has(nonce)) {
     sendJson(response, 401, { error: 'A fresh device challenge is required.' });
@@ -195,14 +191,14 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, isFileSharingEnabled, sharedFilesDirectory, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
     const url = new URL(request.url, 'https://localhost');
     if (url.pathname.startsWith('/files/')) {
       try {
-        await handleSharedFileRequest(request, response, url, sharedFilesDirectory || path.join(process.cwd(), '.lockdown-shared-files'), isFileSharingEnabled);
+        await handleSharedFileRequest(request, response, url, sharedFilesDirectory || path.join(process.cwd(), '.lockdown-shared-files'));
       } catch (error) {
         if (!response.headersSent) sendJson(response, 500, { error: error.message });
       }
@@ -243,10 +239,12 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       pendingNonces.delete(body.nonce);
 
       if (body.command === 'shutdown') {
+        if (stopScreenView) stopScreenView();
         sendJson(response, 202, { ok: true, data: { scheduled: true, delaySeconds: 5 } });
         response.once('finish', () => {
           setTimeout(() => {
-            runShutdown().catch((error) => {
+            const shutdown = scheduleShutdown || (() => runShutdown());
+            Promise.resolve(shutdown()).catch((error) => {
               if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
             });
           }, SHUTDOWN_RESPONSE_DELAY_MS).unref();

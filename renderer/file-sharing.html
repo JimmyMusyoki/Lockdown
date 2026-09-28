@@ -8,12 +8,16 @@
 </head>
 <body>
   <header class="topbar">
-    <div><span class="eyebrow">Shared device</span><h1 id="device-name">Remote PC</h1><p id="device-address"></p></div>
+    <div><span class="eyebrow">Remote transfer</span><h1 id="device-name">Selected PCs</h1><p id="device-address"></p></div>
     <button id="send-files" class="icon-button primary" type="button" title="Choose local files to send to this PC" aria-label="Send files to this PC">↑</button>
   </header>
   <main>
-    <div class="section-heading"><div><span class="eyebrow">Available from this PC</span><h2>Shared files</h2></div><button id="refresh-files" class="icon-button" type="button" title="Refresh the shared-file list" aria-label="Refresh shared files">↻</button></div>
-    <p class="scope-note">Files you send appear in this list. Download a file to save a local copy.</p>
+    <section class="destination-section">
+      <div class="section-heading"><div><span class="eyebrow">Send to</span><h2>Destination PCs</h2></div><label class="select-all"><input id="select-all-destinations" type="checkbox" /> All saved PCs</label></div>
+      <div id="destination-list" class="destination-list"></div>
+    </section>
+    <div class="section-heading source-heading"><div><span class="eyebrow">Take from</span><h2>Shared files</h2></div><div class="source-actions"><select id="source-pc" aria-label="Source PC"></select><button id="refresh-files" class="icon-button" type="button" title="Refresh files on the source PC" aria-label="Refresh shared files">↻</button></div></div>
+    <p class="scope-note">Choose a shared file to download here or copy directly from the source PC to selected destinations. Remote access is available to reachable PCs on your local network.</p>
     <div id="file-list" class="file-list" aria-live="polite"><p class="empty-state">Loading shared files…</p></div>
     <p id="transfer-status" class="transfer-status" role="status"></p>
   </main>

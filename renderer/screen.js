@@ -44,7 +44,7 @@ async function startScreenView() {
   }
   try {
     const session = await window.api.remoteCommand(host, 'no-password', 'start-screen-view');
-    if (!session?.sessionId) throw new Error('Remote screen viewing is not enabled on this PC.');
+    if (!session?.sessionId) throw new Error('Remote screen session could not be started.');
     sessionId = session.sessionId;
     setStatus('Connecting to display...', true);
     captureNextFrame();
@@ -69,6 +69,12 @@ async function stopScreenView() {
 }
 
 document.getElementById('stop-view').addEventListener('click', stopScreenView);
+window.api.onRemoteScreenEnding(() => {
+  stopped = true;
+  setStatus('Remote PC is shutting down');
+  screenMessage.textContent = 'Screen sharing ended before the remote PC shut down.';
+  screenMessage.classList.remove('hidden');
+});
 window.addEventListener('beforeunload', () => {
   if (sessionId && !stopped) window.api.remoteCommand(host, 'no-password', 'stop-screen-view', { sessionId }).catch(() => {});
 });
