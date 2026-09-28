@@ -9,6 +9,8 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 - **Watchdog** — re-applies the hosts block every 5s, so manually editing the hosts file back doesn't work while a lock is active
 - **Tray persistence** — closing the window while locked hides it instead of quitting, so the block can't be dodged by closing the app
 - **LAN controller** — the same app can run as a password-protected agent on every desktop, while one desktop sends website, app, and lock commands to the others
+- **Live screen viewing** — view an opted-in saved PC without a per-request prompt; each session expires after five minutes and can be stopped from the target PC's tray
+- **LAN file sharing** — send files to a saved PC and download its shared files; each PC can disable sharing locally and transfers are limited to 50 MB per file
 - **Background agent** — installed builds create a boot-time Windows agent that runs before sign-in, applies one shared rule set to every account, and opens the private-network firewall rule for the LAN agent
 - **Schedules and temporary unblock** — recurring weekday/time windows can start focus restrictions automatically, while selected website and application rules can be paused for a limited number of minutes
 
@@ -30,7 +32,11 @@ npm start
 
 ### Network control
 
-Install and run the app on each desktop on the same LAN. Each installation exposes an HTTPS agent on port `47821` by default. All installations use the shared agent password configured for the app. Enter it in the Network controller panel to start a two-minute command session; after that, the app prompts again. Commands use a single-use challenge, timestamp, request ID, and signed command envelope. The password itself is never sent over the network. The controller pins each agent's first observed certificate for the current session and rejects certificate changes.
+Install and run the app on each desktop on the same LAN. Each logged-in desktop exposes an HTTPS agent on port `47821` by default. Packaged builds start the desktop app hidden at user sign-in so remote commands remain available; the separate boot agent continues applying local restrictions before sign-in. The controller pins each agent's first observed certificate for the current session and rejects certificate changes.
+
+Select one saved PC to use the screen and file-sharing icons above the device list. Their hover labels describe each action. To allow unattended viewing, enable **Allow remote screen viewing on this PC** in the Network section on each target PC. The preview refreshes about once per second at up to 960×540, expires after five minutes, and can be stopped from that PC's tray menu. Screen viewing is unavailable before a user signs in.
+
+Enable **Allow file sharing on this PC** in the Network section on each PC that should receive or serve files. The file-sharing view lets you choose local files to send and download files available on the selected PC. Received files are stored under `C:\ProgramData\Lockdown Blocker\shared-files`; each file is limited to 50 MB.
 
 The installed build creates a Windows Task Scheduler task named **Lockdown Blocker Background Agent**. It runs as `SYSTEM` when Windows powers on, before any account signs in, so hosts and application rules apply to every local account. Rules and certificates are stored in `C:\ProgramData\Lockdown Blocker`, letting the background agent and administrator console share the same state. The boot agent has no visible window; the normal app window remains the administrator console.
 

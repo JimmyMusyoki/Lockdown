@@ -65,6 +65,9 @@ const focusSelectedBtn = document.getElementById('focus-selected');
 const blockWebsitesSelectedBtn = document.getElementById('block-websites-selected');
 const blockAppsSelectedBtn = document.getElementById('block-apps-selected');
 const shutdownSelectedBtn = document.getElementById('shutdown-selected');
+const viewSelectedScreenBtn = document.getElementById('view-selected-screen');
+const openSelectedFileSharingBtn = document.getElementById('open-selected-file-sharing');
+const remoteToolsHint = document.getElementById('remote-tools-hint');
 const openLocalRulesBtn = document.getElementById('open-local-rules');
 const groupSitesBtn = document.getElementById('group-sites');
 const groupAppsBtn = document.getElementById('group-apps');
@@ -100,6 +103,12 @@ const usageUpdated = document.getElementById('usage-updated');
 const dashboardOnline = document.getElementById('dashboard-online');
 const dashboardOffline = document.getElementById('dashboard-offline');
 const dashboardDeviceList = document.getElementById('dashboard-device-list');
+const hotspotSharingDisabled = document.getElementById('hotspot-sharing-disabled');
+const hotspotSharingStatus = document.getElementById('hotspot-sharing-status');
+const screenViewingEnabled = document.getElementById('screen-viewing-enabled');
+const screenViewingStatus = document.getElementById('screen-viewing-status');
+const fileSharingEnabled = document.getElementById('file-sharing-enabled');
+const fileSharingStatus = document.getElementById('file-sharing-status');
 let speedRefreshTimer;
 let discoveredDevices = [];
 let usageReadings = [];
@@ -405,6 +414,11 @@ function updateSavedSelectionState() {
   const selected = inputs.filter((input) => input.checked).length;
   selectAllSaved.checked = inputs.length > 0 && selected === inputs.length;
   selectAllSaved.indeterminate = selected > 0 && selected < inputs.length;
+  viewSelectedScreenBtn.disabled = selected !== 1 || selectedSavedDevices().some(isCurrentDevice);
+  openSelectedFileSharingBtn.disabled = selected !== 1 || selectedSavedDevices().some(isCurrentDevice);
+  remoteToolsHint.textContent = selected === 1
+    ? 'One PC selected'
+    : selected > 1 ? 'Select one PC for screen or file tools' : 'Select one PC to continue';
   groupSelectionHelp.textContent = selected
     ? `${selected} PC${selected === 1 ? '' : 's'} selected — choose an action below.`
     : 'Select one PC, several PCs, or every PC in this group.';
@@ -775,6 +789,18 @@ async function loadData() {
   sitesInput.value = data.blockedSites.join('\n');
   allowedSitesInput.value = (data.allowedSites || []).join('\n');
   appsInput.value = data.blockedApps.join('\n');
+  if (screenViewingEnabled) {
+    screenViewingEnabled.checked = data.network?.screenViewingEnabled === true;
+    screenViewingStatus.textContent = screenViewingEnabled.checked ? 'Remote screen viewing is enabled for this PC.' : 'Remote screen viewing is disabled.';
+  }
+  if (fileSharingEnabled) {
+    fileSharingEnabled.checked = data.network?.fileSharingEnabled === true;
+    fileSharingStatus.textContent = fileSharingEnabled.checked ? 'File sharing is enabled for this PC.' : 'File sharing is disabled.';
+  }
+  if (hotspotSharingDisabled) {
+    hotspotSharingDisabled.checked = data.hotspotSharingDisabled === true;
+    hotspotSharingStatus.textContent = hotspotSharingDisabled.checked ? 'Hotspot sharing is disabled.' : 'Hotspot sharing is allowed.';
+  }
   gamingMode.checked = gamingApps.every((app) => data.blockedApps.some((blockedApp) => blockedApp.toLowerCase() === app));
   updateCounts();
   await refreshLockStatus();
@@ -941,6 +967,49 @@ gamingMode.addEventListener('change', async () => {
   updateCounts();
   showToast(gamingMode.checked ? 'Gaming apps are now blocked' : 'Gaming app blocking disabled');
 });
+hotspotSharingDisabled?.addEventListener('change', async () => {
+  const requestedState = hotspotSharingDisabled.checked;
+  hotspotSharingDisabled.disabled = true;
+  try {
+    const result = await window.api.setHotspotSharingDisabled(requestedState);
+    hotspotSharingStatus.textContent = requestedState ? 'Hotspot sharing is disabled.' : 'Hotspot sharing is allowed.';
+    showToast(result.supported === false ? result.message : requestedState ? 'Hotspot sharing disabled' : 'Hotspot sharing allowed');
+  } catch (error) {
+    hotspotSharingDisabled.checked = !requestedState;
+    hotspotSharingStatus.textContent = requestedState ? 'Hotspot sharing is allowed.' : 'Hotspot sharing is disabled.';
+    showToast(error.message || 'Could not update hotspot sharing');
+  } finally {
+    hotspotSharingDisabled.disabled = false;
+  }
+});
+screenViewingEnabled?.addEventListener('change', async () => {
+  const requestedState = screenViewingEnabled.checked;
+  screenViewingEnabled.disabled = true;
+  try {
+    await window.api.setScreenViewingEnabled(requestedState);
+    screenViewingStatus.textContent = requestedState ? 'Remote screen viewing is enabled for this PC.' : 'Remote screen viewing is disabled.';
+    showToast(requestedState ? 'Remote screen viewing enabled' : 'Remote screen viewing disabled');
+  } catch (error) {
+    screenViewingEnabled.checked = !requestedState;
+    showToast(error.message || 'Could not update screen-viewing access');
+  } finally {
+    screenViewingEnabled.disabled = false;
+  }
+});
+fileSharingEnabled?.addEventListener('change', async () => {
+  const requestedState = fileSharingEnabled.checked;
+  fileSharingEnabled.disabled = true;
+  try {
+    await window.api.setFileSharingEnabled(requestedState);
+    fileSharingStatus.textContent = requestedState ? 'File sharing is enabled for this PC.' : 'File sharing is disabled.';
+    showToast(requestedState ? 'File sharing enabled' : 'File sharing disabled');
+  } catch (error) {
+    fileSharingEnabled.checked = !requestedState;
+    showToast(error.message || 'Could not update file-sharing access');
+  } finally {
+    fileSharingEnabled.disabled = false;
+  }
+});
 scanNetworkBtn.addEventListener('click', scanNetwork);
 syncSavedPcsBtn?.addEventListener('click', syncSavedPcs);
 refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);
@@ -1005,6 +1074,30 @@ openLocalRulesBtn.addEventListener('click', () => {
 selectAllSaved.addEventListener('change', () => {
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => { input.checked = selectAllSaved.checked; });
   updateSavedSelectionState();
+});
+viewSelectedScreenBtn.addEventListener('click', async () => {
+  const [device] = selectedSavedDevices();
+  if (!device || isCurrentDevice(device)) return showToast('Select one remote PC first');
+  viewSelectedScreenBtn.disabled = true;
+  try {
+    await window.api.openScreenView(`${device.ip}:47821`, device.name || device.ip);
+  } catch (error) {
+    showToast(error.message || 'Could not open the screen viewer');
+  } finally {
+    updateSavedSelectionState();
+  }
+});
+openSelectedFileSharingBtn.addEventListener('click', async () => {
+  const [device] = selectedSavedDevices();
+  if (!device || isCurrentDevice(device)) return showToast('Select one remote PC first');
+  openSelectedFileSharingBtn.disabled = true;
+  try {
+    await window.api.openFileSharing(`${device.ip}:47821`, device.name || device.ip);
+  } catch (error) {
+    showToast(error.message || 'Could not open file sharing');
+  } finally {
+    updateSavedSelectionState();
+  }
 });
 speedTestBtn.addEventListener('click', runSpeedTest);
 document.querySelectorAll('[data-go-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.goTab)));

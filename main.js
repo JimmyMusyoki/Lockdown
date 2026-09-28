@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog, desktopCapturer } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawnSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const { pipeline } = require('stream/promises');
 const https = require('https');
 
 const store = require('./src/store');
@@ -13,6 +15,7 @@ const crypto = require('crypto');
 const networkDiscovery = require('./src/networkDiscovery');
 const networkSpeedTest = require('./src/networkSpeedTest');
 const windowsPermissions = require('./src/windowsPermissions');
+const hotspotBlocker = require('./src/hotspotBlocker');
 const scheduleManager = require('./src/scheduleManager');
 const { normalizeList, normalizeDuration } = require('./src/inputValidation');
 
@@ -22,7 +25,11 @@ const usesBootAgent = process.platform === 'win32' && app.isPackaged;
 
 let mainWindow;
 let speedWindow;
+let screenViewerWindow;
+let fileSharingWindow;
+let remoteScreenSession;
 let tray;
+let stopScreenSharingMenuItem;
 let watchdogTimer;
 let updateTimer;
 let scheduleTimer;
@@ -44,7 +51,7 @@ let updateState = {
 };
 
 function configureWindowsStartup() {
-  if (process.platform !== 'win32' || isBackgroundAgent || usesBootAgent) return;
+  if (process.platform !== 'win32' || isBackgroundAgent) return;
 
   const args = app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'];
   try {
@@ -52,6 +59,8 @@ function configureWindowsStartup() {
   } catch (error) {
     console.warn('Current-user startup registration unavailable:', error.message);
   }
+
+  if (usesBootAgent) return;
 
   try {
     const command = `"${process.execPath}" --hidden`;
@@ -73,6 +82,7 @@ function configureWindowsStartup() {
 
 async function remoteCommand(host, password, command, payload, role = 'operator') {
   const address = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const requestTimeoutMs = REMOTE_REQUEST_TIMEOUT_MS;
   const requestJson = (method, route, body) => new Promise((resolve, reject) => {
     const request = https.request({
       hostname: address.split(':')[0],
@@ -90,8 +100,8 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
         catch (_) { reject(new Error('Invalid response from remote agent.')); }
       });
     });
-    request.setTimeout(REMOTE_REQUEST_TIMEOUT_MS, () => {
-      request.destroy(new Error(`Remote device timed out after ${REMOTE_REQUEST_TIMEOUT_MS / 1000} seconds.`));
+    request.setTimeout(requestTimeoutMs, () => {
+      request.destroy(new Error(`Remote device timed out after ${requestTimeoutMs / 1000} seconds.`));
     });
     request.on('socket', (socket) => socket.once('secureConnect', () => {
       const fingerprint = socket.getPeerCertificate().fingerprint256;
@@ -121,6 +131,106 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
   const response = await requestJson('POST', '/command', request);
   if (response.status < 200 || response.status >= 300) throw new Error(response.body.error || 'Remote command failed.');
   return response.body.data;
+}
+
+function validateRemoteHost(host) {
+  const address = String(host || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const match = address.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d{1,5}))?$/);
+  if (!match || match[1].split('.').some((octet) => Number(octet) > 255) || Number(match[2] || 47821) > 65535) {
+    throw new Error('Invalid remote PC address.');
+  }
+  return address;
+}
+
+function pinnedAgentRequest(host, method, route, { headers = {}, uploadPath, downloadPath } = {}) {
+  const address = validateRemoteHost(host);
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: address.split(':')[0],
+      port: address.split(':')[1] || 47821,
+      path: route,
+      method,
+      rejectUnauthorized: false,
+      headers
+    }, (response) => {
+      if (downloadPath && response.statusCode >= 200 && response.statusCode < 300) {
+        pipeline(response, fs.createWriteStream(downloadPath, { flags: 'wx' }))
+          .then(() => resolve({ status: response.statusCode, body: '' }))
+          .catch(reject);
+        return;
+      }
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => resolve({ status: response.statusCode, body }));
+    });
+    request.setTimeout(120000, () => request.destroy(new Error('File transfer timed out.')));
+    request.on('socket', (socket) => socket.once('secureConnect', () => {
+      const fingerprint = socket.getPeerCertificate().fingerprint256;
+      const previous = certificatePins.get(address);
+      if (previous && previous !== fingerprint) {
+        request.destroy(new Error('Remote certificate changed. Connection rejected.'));
+        return;
+      }
+      if (fingerprint) certificatePins.set(address, fingerprint);
+    }));
+    request.on('error', reject);
+    if (uploadPath) {
+      pipeline(fs.createReadStream(uploadPath), request).catch(reject);
+    } else {
+      request.end();
+    }
+  });
+}
+
+async function requestSharedFiles(host, method, route, options = {}) {
+  const challengeResponse = await pinnedAgentRequest(host, 'GET', '/challenge');
+  let challenge;
+  try { challenge = JSON.parse(challengeResponse.body); } catch (_) { throw new Error('Could not get a file-sharing challenge.'); }
+  if (challengeResponse.status !== 200 || typeof challenge.nonce !== 'string') throw new Error('Could not reach that PC.');
+  const response = await pinnedAgentRequest(host, method, route, {
+    ...options,
+    headers: { ...(options.headers || {}), 'x-lockdown-nonce': challenge.nonce }
+  });
+  if (response.status < 200 || response.status >= 300) {
+    let detail = 'File-sharing request failed.';
+    try { detail = JSON.parse(response.body).error || detail; } catch (_) {}
+    throw new Error(detail);
+  }
+  return response;
+}
+
+async function listSharedFiles(host) {
+  const response = await requestSharedFiles(host, 'GET', '/files/list');
+  return JSON.parse(response.body).files || [];
+}
+
+async function uploadSharedFile(host, filePath) {
+  const stats = await fs.promises.stat(filePath);
+  if (!stats.isFile() || stats.size > 50 * 1024 * 1024) throw new Error('Choose a file that is 50 MB or smaller.');
+  const name = path.basename(filePath);
+  const response = await requestSharedFiles(host, 'POST', `/files/upload?name=${encodeURIComponent(name)}`, {
+    uploadPath: filePath,
+    headers: { 'Content-Length': stats.size, 'Content-Type': 'application/octet-stream' }
+  });
+  return JSON.parse(response.body).file;
+}
+
+async function downloadSharedFile(host, file) {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save shared file',
+    defaultPath: path.join(app.getPath('downloads'), path.basename(file.name))
+  });
+  if (result.canceled || !result.filePath) return false;
+  const temporaryPath = `${result.filePath}.${crypto.randomUUID()}.download`;
+  try {
+    await requestSharedFiles(host, 'GET', `/files/download?id=${encodeURIComponent(file.id)}`, { downloadPath: temporaryPath });
+    await fs.promises.rename(temporaryPath, result.filePath);
+    return true;
+  } catch (error) {
+    await fs.promises.rm(temporaryPath, { force: true });
+    throw error;
+  }
 }
 
 function createWindow() {
@@ -202,13 +312,15 @@ function configureAutoUpdates() {
 function createTray() {
   tray = new Tray(path.join(__dirname, 'renderer', 'spacecraft.png'));
   tray.setToolTip('Lockdown Blocker');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Open', click: () => mainWindow.show() },
-      { label: 'Open speed monitor', click: () => createSpeedWindow() },
-      { label: 'Quit Lockdown', click: () => { isQuitting = true; app.quit(); } }
-    ])
-  );
+  const menu = Menu.buildFromTemplate([
+    { label: 'Open', click: () => mainWindow.show() },
+    { label: 'Open speed monitor', click: () => createSpeedWindow() },
+    { label: 'Stop remote screen sharing', enabled: false, click: () => stopScreenView(remoteScreenSession?.id) },
+    { type: 'separator' },
+    { label: 'Quit Lockdown', click: () => { isQuitting = true; app.quit(); } }
+  ]);
+  stopScreenSharingMenuItem = menu.items.find((item) => item.label === 'Stop remote screen sharing');
+  tray.setContextMenu(menu);
 }
 
 function createSpeedWindow() {
@@ -238,6 +350,97 @@ function createSpeedWindow() {
   speedWindow.on('closed', () => { speedWindow = null; });
 }
 
+function createScreenViewer(host, name) {
+  if (screenViewerWindow && !screenViewerWindow.isDestroyed()) {
+    screenViewerWindow.setTitle(`Live screen · ${name}`);
+    screenViewerWindow.loadFile(path.join(__dirname, 'renderer', 'screen.html'), { query: { host, name } });
+    screenViewerWindow.show();
+    screenViewerWindow.focus();
+    return;
+  }
+  screenViewerWindow = new BrowserWindow({
+    width: 1100,
+    height: 720,
+    minWidth: 640,
+    minHeight: 420,
+    title: `Live screen · ${name}`,
+    icon: appIcon,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  screenViewerWindow.loadFile(path.join(__dirname, 'renderer', 'screen.html'), { query: { host, name } });
+  screenViewerWindow.on('closed', () => { screenViewerWindow = null; });
+}
+
+function createFileSharingWindow(host, name) {
+  const options = { host, name };
+  if (fileSharingWindow && !fileSharingWindow.isDestroyed()) {
+    fileSharingWindow.setTitle(`File sharing · ${name}`);
+    fileSharingWindow.loadFile(path.join(__dirname, 'renderer', 'file-sharing.html'), { query: options });
+    fileSharingWindow.show();
+    fileSharingWindow.focus();
+    return;
+  }
+  fileSharingWindow = new BrowserWindow({
+    width: 760,
+    height: 620,
+    minWidth: 520,
+    minHeight: 420,
+    title: `File sharing · ${name}`,
+    icon: appIcon,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  fileSharingWindow.loadFile(path.join(__dirname, 'renderer', 'file-sharing.html'), { query: options });
+  fileSharingWindow.on('closed', () => { fileSharingWindow = null; });
+}
+
+async function authorizeScreenView(address) {
+  if (isBackgroundAgent) throw new Error('Screen viewing requires an active desktop session.');
+  if (store.load().network?.screenViewingEnabled !== true) {
+    throw new Error('This PC has not enabled remote screen viewing. Turn it on in the Network section on that PC.');
+  }
+  if (remoteScreenSession && Date.now() < remoteScreenSession.expiresAt) {
+    throw new Error('Another screen-view session is already active.');
+  }
+  remoteScreenSession = { id: crypto.randomUUID(), expiresAt: Date.now() + 5 * 60 * 1000 };
+  if (stopScreenSharingMenuItem) stopScreenSharingMenuItem.enabled = true;
+  recordActivity('Remote screen sharing started', address);
+  return { sessionId: remoteScreenSession.id, expiresAt: remoteScreenSession.expiresAt };
+}
+
+async function captureScreenFrame(sessionId) {
+  if (store.load().network?.screenViewingEnabled !== true || !remoteScreenSession || remoteScreenSession.id !== sessionId || Date.now() >= remoteScreenSession.expiresAt) {
+    remoteScreenSession = null;
+    if (stopScreenSharingMenuItem) stopScreenSharingMenuItem.enabled = false;
+    recordActivity('Remote screen sharing ended', 'Disabled, expired, or stopped');
+    throw new Error('Remote screen sharing is disabled, expired, or has been stopped.');
+  }
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 960, height: 540 },
+    fetchWindowIcons: false
+  });
+  const primaryDisplayId = String(screen.getPrimaryDisplay().id);
+  const source = sources.find((item) => item.display_id === primaryDisplayId) || sources[0];
+  if (!source || source.thumbnail.isEmpty()) throw new Error('No capturable display is available.');
+  return { image: source.thumbnail.toJPEG(58).toString('base64'), capturedAt: Date.now() };
+}
+
+function stopScreenView(sessionId) {
+  if (remoteScreenSession?.id !== sessionId) return false;
+  remoteScreenSession = null;
+  if (stopScreenSharingMenuItem) stopScreenSharingMenuItem.enabled = false;
+  recordActivity('Remote screen sharing ended', 'Stopped from the local tray menu or viewer');
+  return true;
+}
+
 // Watchdog: every few seconds, re-apply the hosts block. This defeats
 // someone manually editing the hosts file back while a lock is active.
 function startWatchdog() {
@@ -255,6 +458,13 @@ function startWatchdog() {
         hosts.applyBlockedSites(effectiveBlockedSites(data));
       } catch (error) {
         console.error('Watchdog could not apply website blocks:', error.message);
+      }
+    }
+    if (data.hotspotSharingDisabled) {
+      try {
+        hotspotBlocker.applyPreference(true);
+      } catch (error) {
+        console.error('Hotspot sharing could not be kept disabled:', error.message);
       }
     }
   }, 5000);
@@ -411,20 +621,34 @@ app.whenReady().then(() => {
   } catch (error) {
     reportHostsPermissionError(error);
   }
+  if (data.hotspotSharingDisabled) {
+    try {
+      hotspotBlocker.applyPreference(true);
+    } catch (error) {
+      console.error('Hotspot sharing could not be disabled:', error.message);
+    }
+  }
   appBlocker.startAppBlocking(() => effectiveBlockedApps(store.load()));
   if (data.network?.agentEnabled !== false) {
-    networkAgent.startNetworkAgent({
-      getData: store.load,
-      getNetworkGroups: () => store.load().network?.groups || [],
-      updateSites,
-      updateApps,
-      startLock,
-      getActivity,
-      mergeNetworkGroup,
-      recordActivity,
-      certificateDirectory: path.join(store.DATA_DIR, 'agent-certificate'),
-      port: data.network?.port || networkAgent.DEFAULT_PORT
-    }).catch((error) => console.error('Network agent failed to start:', error.message));
+    if (!isBackgroundAgent) {
+      networkAgent.startNetworkAgent({
+        getData: store.load,
+        getNetworkGroups: () => store.load().network?.groups || [],
+        updateSites,
+        updateApps,
+        startLock,
+        getActivity,
+        mergeNetworkGroup,
+        recordActivity,
+        requestScreenView: authorizeScreenView,
+        captureScreenFrame,
+        stopScreenView,
+        isFileSharingEnabled: () => store.load().network?.fileSharingEnabled === true,
+        sharedFilesDirectory: path.join(store.DATA_DIR, 'shared-files'),
+        certificateDirectory: path.join(store.DATA_DIR, 'agent-certificate'),
+        port: data.network?.port || networkAgent.DEFAULT_PORT
+      }).catch((error) => console.error('Network agent failed to start:', error.message));
+    }
     windowsPermissions.ensurePrivateNetworkAccess(data.network?.port || networkAgent.DEFAULT_PORT)
       .then((result) => console.log(result.created ? 'Private network firewall rule created.' : 'Private network firewall rule ready.'))
       .catch((error) => console.error('Private network firewall rule unavailable:', error.message));
@@ -446,6 +670,35 @@ app.on('window-all-closed', () => {
 // ---------- IPC handlers (renderer <-> main) ----------
 
 ipcMain.handle('get-data', () => store.load());
+
+ipcMain.handle('set-hotspot-sharing-disabled', (_evt, disabled) => {
+  const data = store.load();
+  const preference = Boolean(disabled);
+  const result = hotspotBlocker.applyPreference(preference);
+  data.hotspotSharingDisabled = preference;
+  store.save(data);
+  recordActivity(preference ? 'Hotspot sharing disabled' : 'Hotspot sharing allowed', 'Windows Internet Connection Sharing');
+  return { ...result, disabled: preference };
+});
+
+ipcMain.handle('set-screen-viewing-enabled', (_evt, enabled) => {
+  if (isBackgroundAgent) throw new Error('Change screen-viewing access from the signed-in desktop app.');
+  const data = store.load();
+  data.network = { ...(data.network || {}), screenViewingEnabled: Boolean(enabled) };
+  store.save(data);
+  if (!data.network.screenViewingEnabled && remoteScreenSession) stopScreenView(remoteScreenSession.id);
+  recordActivity(data.network.screenViewingEnabled ? 'Remote screen viewing enabled' : 'Remote screen viewing disabled', 'Local network access setting');
+  return data.network.screenViewingEnabled;
+});
+
+ipcMain.handle('set-file-sharing-enabled', (_evt, enabled) => {
+  if (isBackgroundAgent) throw new Error('Change file-sharing access from the signed-in desktop app.');
+  const data = store.load();
+  data.network = { ...(data.network || {}), fileSharingEnabled: Boolean(enabled) };
+  store.save(data);
+  recordActivity(data.network.fileSharingEnabled ? 'File sharing enabled' : 'File sharing disabled', 'Local network access setting');
+  return data.network.fileSharingEnabled;
+});
 
 ipcMain.handle('get-app-version', () => app.getVersion());
 
@@ -551,6 +804,35 @@ ipcMain.handle('clear-temporary-unblock', () => {
 ipcMain.handle('remote-command', (_evt, { host, password, command, payload, role }) =>
   remoteCommand(host, password || 'no-password', command, payload, role)
 );
+
+ipcMain.handle('open-screen-view', (_evt, { host, name }) => {
+  const address = validateRemoteHost(host);
+  createScreenViewer(address, String(name || address).slice(0, 80));
+  return true;
+});
+
+ipcMain.handle('open-file-sharing', (_evt, { host, name }) => {
+  const address = validateRemoteHost(host);
+  createFileSharingWindow(address, String(name || address).slice(0, 80));
+  return true;
+});
+
+ipcMain.handle('pick-and-send-shared-files', async (_evt, host) => {
+  validateRemoteHost(host);
+  const result = await dialog.showOpenDialog(fileSharingWindow && !fileSharingWindow.isDestroyed() ? fileSharingWindow : mainWindow, {
+    title: 'Choose files to share with this PC',
+    properties: ['openFile', 'multiSelections']
+  });
+  if (result.canceled) return [];
+  const uploads = await Promise.allSettled(result.filePaths.map((filePath) => uploadSharedFile(host, filePath)));
+  return uploads.map((upload, index) => upload.status === 'fulfilled'
+    ? { ok: true, file: upload.value }
+    : { ok: false, name: path.basename(result.filePaths[index]), error: upload.reason.message });
+});
+
+ipcMain.handle('list-shared-files', (_evt, host) => listSharedFiles(validateRemoteHost(host)));
+
+ipcMain.handle('download-shared-file', (_evt, { host, file }) => downloadSharedFile(validateRemoteHost(host), file));
 
 ipcMain.handle('discover-network', () => networkDiscovery.discoverNetwork());
 

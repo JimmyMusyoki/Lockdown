@@ -5,11 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const selfsigned = require('selfsigned');
 const { execFile } = require('child_process');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 
 const DEFAULT_PORT = 47821;
 const SHUTDOWN_RESPONSE_DELAY_MS = 1500;
 const REQUEST_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const REQUEST_ID_TTL_MS = 2 * 60 * 1000;
+const MAX_SHARED_FILE_BYTES = 50 * 1024 * 1024;
 let server;
 const pendingNonces = new Set();
 const usedRequestIds = new Map();
@@ -64,6 +67,100 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
+function safeSharedFileName(value) {
+  const name = path.basename(String(value || '')).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 160);
+  if (!name || name === '.' || name === '..') throw new Error('A valid file name is required.');
+  return name;
+}
+
+async function listSharedFiles(directory) {
+  await fs.promises.mkdir(directory, { recursive: true });
+  const entries = await fs.promises.readdir(directory);
+  const files = await Promise.all(entries.filter((entry) => /^[\da-f-]{36}\.json$/i.test(entry)).map(async (entry) => {
+    try {
+      const metadata = JSON.parse(await fs.promises.readFile(path.join(directory, entry), 'utf8'));
+      const expectedId = entry.slice(0, -5);
+      if (metadata.id !== expectedId) return null;
+      const stats = await fs.promises.stat(path.join(directory, `${metadata.id}.data`));
+      return { id: metadata.id, name: safeSharedFileName(metadata.name), size: stats.size, addedAt: metadata.addedAt };
+    } catch (_) {
+      return null;
+    }
+  }));
+  return files.filter(Boolean).sort((left, right) => right.addedAt.localeCompare(left.addedAt));
+}
+
+async function handleSharedFileRequest(request, response, url, directory, isFileSharingEnabled) {
+  if (!isFileSharingEnabled?.()) {
+    sendJson(response, 403, { error: 'File sharing is disabled on this PC.' });
+    return;
+  }
+  const nonce = request.headers['x-lockdown-nonce'] || url.searchParams.get('nonce');
+  if (!nonce || !pendingNonces.has(nonce)) {
+    sendJson(response, 401, { error: 'A fresh device challenge is required.' });
+    return;
+  }
+  pendingNonces.delete(nonce);
+  await fs.promises.mkdir(directory, { recursive: true });
+
+  if (request.method === 'GET' && url.pathname === '/files/list') {
+    sendJson(response, 200, { ok: true, files: await listSharedFiles(directory) });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/files/upload') {
+    const contentLength = Number(request.headers['content-length']);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_SHARED_FILE_BYTES) {
+      sendJson(response, 413, { error: 'Files must be 50 MB or smaller.' });
+      return;
+    }
+    const name = safeSharedFileName(url.searchParams.get('name'));
+    const id = crypto.randomUUID();
+    const dataPath = path.join(directory, `${id}.data`);
+    let received = 0;
+    const limit = new Transform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        callback(received > MAX_SHARED_FILE_BYTES ? new Error('Files must be 50 MB or smaller.') : null, chunk);
+      }
+    });
+    try {
+      await pipeline(request, limit, fs.createWriteStream(dataPath, { flags: 'wx' }));
+      if (received !== contentLength) throw new Error('Uploaded file size did not match its declared size.');
+      await fs.promises.writeFile(path.join(directory, `${id}.json`), JSON.stringify({ id, name, addedAt: new Date().toISOString() }), { flag: 'wx' });
+      sendJson(response, 201, { ok: true, file: { id, name, size: received } });
+    } catch (error) {
+      await fs.promises.rm(dataPath, { force: true });
+      if (!response.headersSent && !response.destroyed) sendJson(response, error.message.includes('50 MB') ? 413 : 400, { error: error.message });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/files/download') {
+    const id = url.searchParams.get('id') || '';
+    if (!/^[\da-f-]{36}$/i.test(id)) {
+      sendJson(response, 400, { error: 'Invalid shared-file ID.' });
+      return;
+    }
+    try {
+      const metadata = JSON.parse(await fs.promises.readFile(path.join(directory, `${id}.json`), 'utf8'));
+      if (metadata.id !== id) throw new Error('Invalid shared-file metadata.');
+      const name = safeSharedFileName(metadata.name);
+      response.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': (await fs.promises.stat(path.join(directory, `${id}.data`))).size,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`
+      });
+      await pipeline(fs.createReadStream(path.join(directory, `${id}.data`)), response);
+    } catch (error) {
+      if (!response.headersSent) sendJson(response, 404, { error: 'That shared file is no longer available.' });
+    }
+    return;
+  }
+
+  sendJson(response, 404, { error: 'Unknown file-sharing route.' });
+}
+
 function publicLock(lock) {
   if (!lock) return null;
   return { active: Boolean(lock.active), unlockAt: lock.unlockAt || null };
@@ -98,10 +195,19 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, isFileSharingEnabled, sharedFilesDirectory, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
+    const url = new URL(request.url, 'https://localhost');
+    if (url.pathname.startsWith('/files/')) {
+      try {
+        await handleSharedFileRequest(request, response, url, sharedFilesDirectory || path.join(process.cwd(), '.lockdown-shared-files'), isFileSharingEnabled);
+      } catch (error) {
+        if (!response.headersSent) sendJson(response, 500, { error: error.message });
+      }
+      return;
+    }
     if (request.method === 'GET' && request.url === '/health') {
       sendJson(response, 200, { ok: true, name: 'Lockdown Blocker Agent' });
       return;
@@ -110,7 +216,7 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
     if (request.method === 'GET' && request.url === '/challenge') {
       const nonce = crypto.randomBytes(32).toString('hex');
       pendingNonces.add(nonce);
-      setTimeout(() => pendingNonces.delete(nonce), 30000);
+      setTimeout(() => pendingNonces.delete(nonce), 30000).unref();
       sendJson(response, 200, { nonce });
       return;
     }
@@ -153,6 +259,9 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
         const data = getData();
         result = { blockedSites: data.blockedSites, blockedApps: data.blockedApps, lock: publicLock(data.lock) };
       }
+      else if (body.command === 'start-screen-view' && requestScreenView) result = await requestScreenView(address);
+      else if (body.command === 'get-screen-frame' && captureScreenFrame) result = await captureScreenFrame(body.payload?.sessionId);
+      else if (body.command === 'stop-screen-view' && stopScreenView) result = stopScreenView(body.payload?.sessionId);
       else if (body.command === 'get-network-groups') result = getNetworkGroups ? getNetworkGroups() : [];
       else if (body.command === 'update-sites') result = updateSites(body.payload || []);
       else if (body.command === 'update-apps') result = updateApps(body.payload || []);

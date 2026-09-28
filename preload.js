@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('get-data'),
+  setHotspotSharingDisabled: (disabled) => ipcRenderer.invoke('set-hotspot-sharing-disabled', disabled),
+  setScreenViewingEnabled: (enabled) => ipcRenderer.invoke('set-screen-viewing-enabled', enabled),
+  setFileSharingEnabled: (enabled) => ipcRenderer.invoke('set-file-sharing-enabled', enabled),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   setAutomaticUpdates: (enabled) => ipcRenderer.invoke('set-automatic-updates', enabled),
@@ -20,6 +23,11 @@ contextBridge.exposeInMainWorld('api', {
   temporaryUnblock: (minutes, sites, apps) => ipcRenderer.invoke('temporary-unblock', { minutes, sites, apps }),
   clearTemporaryUnblock: () => ipcRenderer.invoke('clear-temporary-unblock'),
   remoteCommand: (host, password, command, payload, role) => ipcRenderer.invoke('remote-command', { host, password, command, payload, role }),
+  openScreenView: (host, name) => ipcRenderer.invoke('open-screen-view', { host, name }),
+  openFileSharing: (host, name) => ipcRenderer.invoke('open-file-sharing', { host, name }),
+  pickAndSendSharedFiles: (host) => ipcRenderer.invoke('pick-and-send-shared-files', host),
+  listSharedFiles: (host) => ipcRenderer.invoke('list-shared-files', host),
+  downloadSharedFile: (host, file) => ipcRenderer.invoke('download-shared-file', { host, file }),
   discoverNetwork: () => ipcRenderer.invoke('discover-network'),
   networkSpeedTest: () => ipcRenderer.invoke('network-speed-test'),
   onNetworkSpeedStage: (callback) => ipcRenderer.on('network-speed-stage', (_event, stage) => callback(stage)),

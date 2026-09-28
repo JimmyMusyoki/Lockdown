@@ -22,8 +22,11 @@ const DEFAULT_DATA = {
   network: {
     agentEnabled: true,
     port: 47821,
+    screenViewingEnabled: false,
+    fileSharingEnabled: false,
     groups: []
   },
+  hotspotSharingDisabled: false,
   activity: []
 };
 

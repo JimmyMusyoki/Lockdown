@@ -1,0 +1,28 @@
+:root { color-scheme: light; font-family: "Segoe UI", sans-serif; color: #202b24; background: #f3f6f2; }
+* { box-sizing: border-box; }
+body { width: 100vw; min-height: 100vh; margin: 0; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 26px; border-bottom: 1px solid #d8e0d9; background: #fff; }
+.eyebrow { color: #64806e; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+h1, h2, p { margin: 0; }
+h1 { margin-top: 4px; font-size: 19px; }
+.topbar p { margin-top: 4px; color: #69766d; font-size: 11px; }
+main { max-width: 820px; margin: 0 auto; padding: 23px 26px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #d8e0d9; }
+.section-heading h2 { margin-top: 4px; font-size: 16px; }
+.scope-note { margin: 12px 0 17px; color: #69766d; font-size: 12px; line-height: 1.5; }
+.icon-button { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border: 1px solid #ccd6ce; border-radius: 6px; color: #33483a; background: #fff; font-size: 20px; cursor: pointer; }
+.icon-button:hover { border-color: #39785a; color: #246847; background: #edf5ef; }
+.icon-button.primary { border-color: #266a49; color: #fff; background: #266a49; font-size: 22px; }
+.icon-button.primary:hover { background: #1d563a; }
+.icon-button:disabled { cursor: wait; opacity: .5; }
+.file-list { display: grid; }
+.file-row { display: flex; min-width: 0; align-items: center; gap: 14px; padding: 14px 2px; border-bottom: 1px solid #e0e6e1; }
+.file-icon { display: grid; width: 34px; height: 38px; flex: 0 0 34px; place-items: center; border: 1px solid #d6e0d8; border-radius: 4px; color: #39785a; background: #edf5ef; font-size: 17px; }
+.file-details { flex: 1; min-width: 0; }
+.file-details strong, .file-details small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-details strong { font-size: 12px; font-weight: 650; }
+.file-details small { margin-top: 4px; color: #718077; font-size: 10px; }
+.empty-state { padding: 26px 0; color: #718077; font-size: 12px; text-align: center; }
+.transfer-status { min-height: 20px; margin-top: 14px; color: #39785a; font-size: 11px; }
+.transfer-status.error { color: #a3463d; }
+@media (max-width: 540px) { .topbar { padding: 17px; } main { padding: 18px 17px; } }

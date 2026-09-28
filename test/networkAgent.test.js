@@ -1,6 +1,29 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createRequestProof, hashPassword } = require('../src/networkAgent');
+const https = require('node:https');
+const net = require('node:net');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { createRequestProof, hashPassword, startNetworkAgent, stopNetworkAgent } = require('../src/networkAgent');
+
+function requestAgent(port, route, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = https.request({ hostname: '127.0.0.1', port, path: route, method, headers, rejectUnauthorized: false }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks) }));
+    });
+    request.on('error', reject);
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+async function getChallenge(port) {
+  const response = await requestAgent(port, '/challenge');
+  return JSON.parse(response.body.toString()).nonce;
+}
 
 test('request proof covers command, payload, role, and request metadata', () => {
   const base = {
@@ -15,4 +38,48 @@ test('request proof covers command, payload, role, and request metadata', () => 
   assert.notEqual(proof, createRequestProof(hashPassword('test-password'), { ...base, command: 'shutdown', role: 'admin' }));
   assert.notEqual(proof, createRequestProof(hashPassword('test-password'), { ...base, payload: ['other.example'] }));
   assert.notEqual(proof, createRequestProof(hashPassword('test-password'), { ...base, requestId: 'different-request-123' }));
+});
+
+test('shared files require local enablement and transfer through a one-use challenge', async () => {
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lockdown-file-share-'));
+  const portReservation = net.createServer();
+  await new Promise((resolve) => portReservation.listen(0, '127.0.0.1', resolve));
+  const { port } = portReservation.address();
+  await new Promise((resolve) => portReservation.close(resolve));
+  let enabled = false;
+
+  try {
+    await startNetworkAgent({
+      getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
+      isFileSharingEnabled: () => enabled,
+      sharedFilesDirectory: path.join(temporaryDirectory, 'shared'),
+      certificateDirectory: path.join(temporaryDirectory, 'certificates'),
+      port
+    });
+
+    assert.equal((await requestAgent(port, '/files/list')).status, 403);
+    enabled = true;
+    const listNonce = await getChallenge(port);
+    const initialList = await requestAgent(port, '/files/list', { headers: { 'x-lockdown-nonce': listNonce } });
+    assert.deepEqual(JSON.parse(initialList.body.toString()).files, []);
+    assert.equal((await requestAgent(port, '/files/list', { headers: { 'x-lockdown-nonce': listNonce } })).status, 401);
+
+    const content = Buffer.from('shared content');
+    const uploadNonce = await getChallenge(port);
+    const upload = await requestAgent(port, '/files/upload?name=report.txt', {
+      method: 'POST',
+      headers: { 'x-lockdown-nonce': uploadNonce, 'content-length': content.length },
+      body: content
+    });
+    assert.equal(upload.status, 201);
+    const sharedFile = JSON.parse(upload.body.toString()).file;
+
+    const downloadNonce = await getChallenge(port);
+    const download = await requestAgent(port, `/files/download?id=${sharedFile.id}`, { headers: { 'x-lockdown-nonce': downloadNonce } });
+    assert.equal(download.status, 200);
+    assert.deepEqual(download.body, content);
+  } finally {
+    stopNetworkAgent();
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
 });

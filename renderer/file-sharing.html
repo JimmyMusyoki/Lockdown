@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File sharing</title>
+  <link rel="stylesheet" href="file-sharing.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="eyebrow">Shared device</span><h1 id="device-name">Remote PC</h1><p id="device-address"></p></div>
+    <button id="send-files" class="icon-button primary" type="button" title="Choose local files to send to this PC" aria-label="Send files to this PC">↑</button>
+  </header>
+  <main>
+    <div class="section-heading"><div><span class="eyebrow">Available from this PC</span><h2>Shared files</h2></div><button id="refresh-files" class="icon-button" type="button" title="Refresh the shared-file list" aria-label="Refresh shared files">↻</button></div>
+    <p class="scope-note">Files you send appear in this list. Download a file to save a local copy.</p>
+    <div id="file-list" class="file-list" aria-live="polite"><p class="empty-state">Loading shared files…</p></div>
+    <p id="transfer-status" class="transfer-status" role="status"></p>
+  </main>
+  <script src="file-sharing.js"></script>
+</body>
+</html>

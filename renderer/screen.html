@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live screen</title>
+  <link rel="stylesheet" href="screen.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <div class="target"><span class="live-indicator"></span><div><strong id="screen-name">Remote PC</strong><small id="screen-status">Connecting</small></div></div>
+    <div class="toolbar-actions"><span id="frame-time">--:--:--</span><button id="stop-view" type="button" title="Stop screen viewing" aria-label="Stop screen viewing">×</button></div>
+  </header>
+  <main class="screen-stage">
+    <img id="screen-image" alt="Live view of the remote computer screen" />
+    <div id="screen-message" role="status">Connecting. Remote screen viewing must be enabled on this PC.</div>
+  </main>
+  <script src="screen.js"></script>
+</body>
+</html>

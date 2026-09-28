@@ -165,7 +165,32 @@
             <div class="group-action-buttons"><button id="focus-selected" class="secondary-button">Start focus lock</button><button id="block-websites-selected">Block websites</button><button id="block-apps-selected">Block applications</button><button id="shutdown-selected" class="danger-button">Shut down selected</button></div>
             <p class="lab-rule-note">Website and application actions use the lists configured in <button id="open-local-rules" type="button">Manage rules</button>.</p>
           </div>
+          <div class="saved-device-tools" data-device-step="devices">
+            <span>Remote tools <small id="remote-tools-hint">Select one PC to continue</small></span>
+            <div class="saved-device-tool-buttons">
+              <button id="view-selected-screen" class="icon-action" type="button" title="View the selected PC's screen" aria-label="View the selected PC's screen" disabled>▣</button>
+              <button id="open-selected-file-sharing" class="icon-action" type="button" title="Send files to or download files from the selected PC" aria-label="Open file sharing for the selected PC" disabled>↔</button>
+            </div>
+          </div>
           <div id="saved-pc-cards" class="saved-pc-cards" data-device-step="devices"><div class="empty-devices">Save a group to see its PCs here.</div></div>
+        </section>
+
+        <section class="panel network-control-panel" data-tab-section="network">
+          <div class="panel-heading"><div class="panel-icon blue">▣</div><div><h3>Remote screen access</h3><p>Allow saved PCs on your local network to view this display without a prompt each time. Access expires after five minutes; stop it from the tray menu.</p></div></div>
+          <label class="network-toggle"><input id="screen-viewing-enabled" type="checkbox" /><span>Allow remote screen viewing on this PC</span></label>
+          <p id="screen-viewing-status" class="field-note">Remote screen viewing is disabled.</p>
+        </section>
+
+        <section class="panel network-control-panel" data-tab-section="network">
+          <div class="panel-heading"><div class="panel-icon green">↔</div><div><h3>File sharing</h3><p>Allow saved PCs to send files to this PC and download files shared here. Files are limited to 50 MB each and stored in the Lockdown Blocker shared-files folder.</p></div></div>
+          <label class="network-toggle"><input id="file-sharing-enabled" type="checkbox" /><span>Allow file sharing on this PC</span></label>
+          <p id="file-sharing-status" class="field-note">File sharing is disabled.</p>
+        </section>
+
+        <section class="panel network-control-panel" data-tab-section="network">
+          <div class="panel-heading"><div class="panel-icon orange">◉</div><div><h3>Hotspot sharing</h3><p>Control Windows Internet Connection Sharing without turning off Network Discovery.</p></div></div>
+          <label class="network-toggle"><input id="hotspot-sharing-disabled" type="checkbox" /><span>Disable hotspot sharing</span></label>
+          <p id="hotspot-sharing-status" class="field-note">Hotspot sharing is allowed.</p>
         </section>
 
         <section class="speed-panel" data-tab-section="overview">
