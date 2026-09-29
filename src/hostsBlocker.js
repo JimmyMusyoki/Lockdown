@@ -4,8 +4,10 @@ const { execFileSync } = require('child_process');
 function flushDns() {
   try {
     execFileSync('ipconfig', ['/flushdns'], { windowsHide: true, stdio: 'ignore' });
+    return { success: true };
   } catch (error) {
     console.error('DNS flush failed:', error.message);
+    return { success: false, error: error.message };
   }
 }
 
@@ -71,4 +73,4 @@ function clearBlockedSites() {
   applyBlockedSites([]);
 }
 
-module.exports = { applyBlockedSites, clearBlockedSites, HOSTS_PATH };
+module.exports = { applyBlockedSites, clearBlockedSites, flushDns, HOSTS_PATH };

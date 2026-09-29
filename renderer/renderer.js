@@ -105,6 +105,10 @@ const dashboardOffline = document.getElementById('dashboard-offline');
 const dashboardDeviceList = document.getElementById('dashboard-device-list');
 const hotspotSharingDisabled = document.getElementById('hotspot-sharing-disabled');
 const hotspotSharingStatus = document.getElementById('hotspot-sharing-status');
+const flushDnsBtn = document.getElementById('flush-dns');
+const dnsStatus = document.getElementById('dns-status');
+const activityList = document.getElementById('activity-list');
+const refreshActivityBtn = document.getElementById('refresh-activity');
 let speedRefreshTimer;
 let discoveredDevices = [];
 let usageReadings = [];
@@ -362,7 +366,6 @@ function renderSavedPcCards() {
   savedPcCards.querySelectorAll('[data-card-shutdown]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardShutdown, 'shutdown')));
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => input.addEventListener('change', updateSavedSelectionState));
   updateSavedSelectionState();
-  updateSavedDiscoveryStatuses(devices);
   refreshSavedPcStatuses(devices);
 }
 
@@ -394,16 +397,6 @@ async function deleteGroupById(groupId) {
   await deleteSelectedGroup();
 }
 
-function updateSavedDiscoveryStatuses(devices) {
-  devices.forEach((device) => {
-    const card = savedPcCards.querySelector(`[data-saved-card="${CSS.escape(device.ip)}"]`);
-    if (!card) return;
-    const discovered = discoveredDevices.find((item) => devicesMatch(item, device));
-    card.querySelector('.saved-card-status').textContent = discovered?.online ? 'Online' : 'Offline';
-    card.querySelector('.device-state').classList.toggle('local', Boolean(discovered?.online));
-  });
-}
-
 function updateSavedSelectionState() {
   const inputs = [...savedPcCards.querySelectorAll('[data-saved-select]')];
   selectedSavedKeys = new Set(inputs.filter((input) => input.checked).map((input) => input.dataset.savedSelect));
@@ -424,16 +417,17 @@ function updateSavedSelectionState() {
 }
 
 async function refreshSavedPcStatuses(devices) {
-  const password = agentSessionPassword();
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
     if (!card) return;
+    const discoveredOnline = discoveredDevices.some((item) => item.online && devicesMatch(item, device));
     try {
-      await window.api.remoteCommand(`${device.ip}:47821`, password, 'get-status');
-      card.querySelector('.saved-card-status').textContent = 'Online';
-      card.querySelector('.device-state').classList.add('local');
+      const agentOnline = await window.api.remoteHealth(`${device.ip}:47821`);
+      card.querySelector('.saved-card-status').textContent = agentOnline ? 'Online' : discoveredOnline ? 'Agent unavailable' : 'Offline';
+      card.querySelector('.device-state').classList.toggle('local', agentOnline || discoveredOnline);
     } catch (_) {
-      card.querySelector('.saved-card-status').textContent = 'Offline';
+      card.querySelector('.saved-card-status').textContent = discoveredOnline ? 'Agent unavailable' : 'Offline';
+      card.querySelector('.device-state').classList.toggle('local', discoveredOnline);
     }
   }));
 }
@@ -867,10 +861,23 @@ function setActiveTab(id) {
     item.classList.toggle('active', navId === activeTab);
   });
   clearInterval(speedRefreshTimer);
+  if (activeTab === 'network') refreshActivity();
   if (activeTab === 'network') scanNetworkBtn.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (activeTab === 'devices') {
     setDeviceStep('groups');
     savedPcsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+async function refreshActivity() {
+  if (!activityList || !window.api?.getActivity) return;
+  try {
+    const entries = await window.api.getActivity();
+    activityList.innerHTML = entries.length
+      ? entries.slice(0, 50).map((entry) => `<div class="activity-row"><span class="activity-dot"></span><span><strong>${escapeHtml(entry.title)}</strong><small>${escapeHtml(entry.detail || '')}</small></span><time>${escapeHtml(new Date(entry.timestamp).toLocaleString())}</time></div>`).join('')
+      : '<span class="field-note">No LAN requests recorded.</span>';
+  } catch (error) {
+    activityList.textContent = error.message || 'Could not load the LAN request log.';
   }
 }
 
@@ -972,6 +979,20 @@ hotspotSharingDisabled?.addEventListener('change', async () => {
     hotspotSharingDisabled.disabled = false;
   }
 });
+flushDnsBtn?.addEventListener('click', async () => {
+  flushDnsBtn.disabled = true;
+  try {
+    const result = await window.api.flushDns();
+    dnsStatus.textContent = result.success ? 'Windows DNS cache flushed.' : `DNS cache flush failed: ${result.error}`;
+    showToast(result.success ? 'DNS cache flushed' : 'Could not flush DNS cache');
+  } catch (error) {
+    dnsStatus.textContent = error.message || 'Could not flush DNS cache.';
+    showToast(dnsStatus.textContent);
+  } finally {
+    flushDnsBtn.disabled = false;
+  }
+});
+refreshActivityBtn?.addEventListener('click', refreshActivity);
 scanNetworkBtn.addEventListener('click', scanNetwork);
 syncSavedPcsBtn?.addEventListener('click', syncSavedPcs);
 refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);

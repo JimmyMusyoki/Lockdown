@@ -4,6 +4,8 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 
 ## Features
 - **Website blocking** — edits the Windows hosts file to redirect blocked domains to `127.0.0.1`
+- **Domain rule management** — blocked and allowed domain lists can be applied locally or sent to selected LAN PCs; DNS cache flushing is available in Network controls
+- **LAN command audit** — records authenticated agent command endpoint requests with the sender's internal IP address
 - **App blocking** — polls running processes every 3s and force-kills anything on the blocked list
 - **Lock timer** — once started, blocking stays active until the timer expires while the block list remains editable
 - **Watchdog** — re-applies the hosts block every 5s, so manually editing the hosts file back doesn't work while a lock is active
@@ -37,6 +39,8 @@ Install and run the app on each desktop on the same LAN. Each logged-in desktop 
 Select one saved PC to use the screen icon above the device list. Select one or more PCs to open file sharing. The icons show their function on hover. Screen previews refresh about once per second at up to 960×540, expire after five minutes, and can be stopped from the target PC's tray menu. Screen viewing is unavailable before a user signs in.
 
 The file-sharing view lets you choose one PC as the source, download files locally, send local files to the selected destinations, or copy a source PC's file directly to one or all other saved PCs. Received files are stored under `C:\ProgramData\Lockdown Blocker\shared-files`; each file is limited to 50 MB.
+
+Website filtering uses explicit domains in the blocked and allowed lists. Word matching against page text or URL paths, visited-site logging, and whole-device internet access switches are not provided. HTTPS browsing URLs and page content are not visible to this app; the LAN request log records only authenticated requests to the Lockdown agent.
 
 Screen viewing and file sharing do not require a prompt or opt-in on the target PC. Any reachable PC that can connect to the agent port on your local network may use these features, so use them only on a trusted, firewall-protected LAN. The boot-time SYSTEM agent does not provide screen viewing; the signed-in desktop agent must be running.
 

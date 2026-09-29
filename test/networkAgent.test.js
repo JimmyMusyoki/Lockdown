@@ -86,11 +86,13 @@ test('shutdown ends screen sharing before acknowledging the shutdown request', a
   const { port } = portReservation.address();
   await new Promise((resolve) => portReservation.close(resolve));
   let screenStopped = false;
+  const activity = [];
 
   try {
     await startNetworkAgent({
       getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
       stopScreenView: () => { screenStopped = true; },
+      recordActivity: (title, detail) => activity.push({ title, detail }),
       scheduleShutdown: () => {},
       certificateDirectory: path.join(temporaryDirectory, 'certificates'),
       port
@@ -111,6 +113,7 @@ test('shutdown ends screen sharing before acknowledging the shutdown request', a
     });
     assert.equal(response.status, 202);
     assert.equal(screenStopped, true);
+    assert.deepEqual(activity, [{ title: 'LAN client request', detail: '127.0.0.1 POST /command · shutdown' }]);
   } finally {
     stopNetworkAgent();
     await fs.rm(temporaryDirectory, { recursive: true, force: true });

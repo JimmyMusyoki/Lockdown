@@ -181,6 +181,18 @@
           <p id="hotspot-sharing-status" class="field-note">Hotspot sharing is allowed.</p>
         </section>
 
+        <section class="panel network-control-panel" data-tab-section="network">
+          <div class="panel-heading"><div class="panel-icon blue">◎</div><div><h3>Website rules and DNS</h3><p>Manage domain rules under Websites, then apply them to selected PCs. DNS cache flushing applies to this device.</p></div></div>
+          <button id="flush-dns" class="secondary-button" type="button">Flush DNS cache</button>
+          <p id="dns-status" class="field-note" role="status">Windows DNS cache is managed locally.</p>
+        </section>
+
+        <section class="panel network-control-panel" data-tab-section="network">
+          <div class="activity-heading"><h3>LAN agent request log</h3><button id="refresh-activity" class="secondary-button" type="button">Refresh</button></div>
+          <p class="field-note">Authenticated commands record the client IP and agent endpoint. Browsed websites and HTTPS page content are not logged.</p>
+          <div id="activity-list" class="activity-list"><span class="field-note">No LAN requests recorded.</span></div>
+        </section>
+
         <section class="speed-panel" data-tab-section="overview">
           <div class="network-icon">⌁</div>
           <div class="speed-copy"><span class="eyebrow">Connection check</span><h3>Internet speed</h3><p>Measure this computer's current connection. This is separate from LAN device discovery.</p></div>

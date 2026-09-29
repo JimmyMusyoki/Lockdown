@@ -144,7 +144,7 @@ function validateRemoteHost(host) {
   return address;
 }
 
-function pinnedAgentRequest(host, method, route, { headers = {}, uploadPath, downloadPath } = {}) {
+function pinnedAgentRequest(host, method, route, { headers = {}, uploadPath, downloadPath, timeoutMs = 120000, timeoutMessage = 'File transfer timed out.' } = {}) {
   const address = validateRemoteHost(host);
   return new Promise((resolve, reject) => {
     const request = https.request({
@@ -166,7 +166,7 @@ function pinnedAgentRequest(host, method, route, { headers = {}, uploadPath, dow
       response.on('data', (chunk) => { body += chunk; });
       response.on('end', () => resolve({ status: response.statusCode, body }));
     });
-    request.setTimeout(120000, () => request.destroy(new Error('File transfer timed out.')));
+    request.setTimeout(timeoutMs, () => request.destroy(new Error(timeoutMessage)));
     request.on('socket', (socket) => socket.once('secureConnect', () => {
       const fingerprint = socket.getPeerCertificate().fingerprint256;
       const previous = certificatePins.get(address);
@@ -758,6 +758,14 @@ ipcMain.handle('update-apps', (_evt, appsList) => {
 
 ipcMain.handle('update-allowed-sites', (_evt, sites) => updateAllowedSites(sites));
 
+ipcMain.handle('get-activity', () => getActivity());
+
+ipcMain.handle('flush-dns', () => {
+  const result = hosts.flushDns();
+  recordActivity('DNS cache flush', result.success ? 'Windows DNS resolver cache' : result.error);
+  return result;
+});
+
 ipcMain.handle('start-lock', (_evt, { minutes, password }) => {
   return startLock(minutes, password);
 });
@@ -814,6 +822,15 @@ ipcMain.handle('clear-temporary-unblock', () => {
   store.save(data);
   hosts.applyBlockedSites(effectiveBlockedSites(data));
   return true;
+});
+
+ipcMain.handle('remote-health', async (_evt, host) => {
+  const response = await pinnedAgentRequest(host, 'GET', '/health', {
+    timeoutMs: REMOTE_REQUEST_TIMEOUT_MS,
+    timeoutMessage: 'Remote agent health check timed out.'
+  });
+  if (response.status !== 200) return false;
+  try { return JSON.parse(response.body).ok === true; } catch (_) { return false; }
 });
 
 ipcMain.handle('remote-command', async (_evt, { host, password, command, payload, role }) => {

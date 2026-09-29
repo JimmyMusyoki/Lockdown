@@ -237,6 +237,7 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
         return;
       }
       pendingNonces.delete(body.nonce);
+      if (recordActivity) recordActivity('LAN client request', `${address} ${request.method} ${url.pathname} · ${body.command}`);
 
       if (body.command === 'shutdown') {
         if (stopScreenView) stopScreenView();

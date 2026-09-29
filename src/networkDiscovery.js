@@ -1,6 +1,8 @@
 const { execFile } = require('child_process');
 const dns = require('dns').promises;
+const net = require('net');
 const os = require('os');
+const AGENT_PORT = 47821;
 
 function exec(command, args) {
   return new Promise((resolve, reject) => {
@@ -58,16 +60,36 @@ async function pingAddress(ip) {
   }
 }
 
+function agentReachable(ip) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: ip, port: AGENT_PORT });
+    const finish = (reachable) => {
+      socket.destroy();
+      resolve(reachable);
+    };
+    socket.setTimeout(400, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
 async function probeSubnets(local) {
   // The first non-virtual adapter is the active LAN in the common Windows case.
   // ARP entries from other adapters are still included below.
   const candidates = [...new Set(local.flatMap((item) => subnetHosts(item.address, item.netmask)))];
-  const active = [];
+  const pinged = [];
   for (let index = 0; index < candidates.length; index += 64) {
     const batch = await Promise.all(candidates.slice(index, index + 64).map(pingAddress));
-    active.push(...batch.filter(Boolean));
+    pinged.push(...batch.filter(Boolean));
   }
-  return active;
+  const pingedSet = new Set(pinged);
+  const agentActive = [];
+  const unpinged = candidates.filter((ip) => !pingedSet.has(ip));
+  for (let index = 0; index < unpinged.length; index += 64) {
+    const batch = await Promise.all(unpinged.slice(index, index + 64).map(async (ip) => await agentReachable(ip) ? ip : null));
+    agentActive.push(...batch.filter(Boolean));
+  }
+  return [...pinged, ...agentActive];
 }
 
 async function resolveName(ip) {

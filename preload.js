@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('get-data'),
+  getActivity: () => ipcRenderer.invoke('get-activity'),
+  flushDns: () => ipcRenderer.invoke('flush-dns'),
   setHotspotSharingDisabled: (disabled) => ipcRenderer.invoke('set-hotspot-sharing-disabled', disabled),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
@@ -21,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   temporaryUnblock: (minutes, sites, apps) => ipcRenderer.invoke('temporary-unblock', { minutes, sites, apps }),
   clearTemporaryUnblock: () => ipcRenderer.invoke('clear-temporary-unblock'),
   remoteCommand: (host, password, command, payload, role) => ipcRenderer.invoke('remote-command', { host, password, command, payload, role }),
+  remoteHealth: (host) => ipcRenderer.invoke('remote-health', host),
   openScreenView: (host, name) => ipcRenderer.invoke('open-screen-view', { host, name }),
   onRemoteScreenEnding: (callback) => ipcRenderer.on('remote-screen-ending', () => callback()),
   openFileSharing: (destinations, availableDestinations, sources) => ipcRenderer.invoke('open-file-sharing', { destinations, availableDestinations, sources }),
