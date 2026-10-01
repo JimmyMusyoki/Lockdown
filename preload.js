@@ -3,6 +3,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('get-data'),
   getActivity: () => ipcRenderer.invoke('get-activity'),
+  getPcStatus: () => ipcRenderer.invoke('get-pc-status'),
+  getInstalledApps: () => ipcRenderer.invoke('get-installed-apps'),
+  openAppUninstaller: () => ipcRenderer.invoke('open-app-uninstaller'),
+  selectPcFolder: () => ipcRenderer.invoke('select-pc-folder'),
+  listPcFiles: (relativePath) => ipcRenderer.invoke('list-pc-files', relativePath),
+  deletePcFile: (relativePath) => ipcRenderer.invoke('delete-pc-file', relativePath),
+  restartPc: () => ipcRenderer.invoke('restart-pc'),
   flushDns: () => ipcRenderer.invoke('flush-dns'),
   setHotspotSharingDisabled: (disabled) => ipcRenderer.invoke('set-hotspot-sharing-disabled', disabled),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

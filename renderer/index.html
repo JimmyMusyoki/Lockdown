@@ -18,6 +18,7 @@
 
       <nav class="side-nav" aria-label="Main navigation">
         <a class="nav-item active" href="#overview"><span class="nav-icon">◈</span>Dashboard</a>
+        <a class="nav-item" href="#pc"><span class="nav-icon">▣</span>This PC</a>
         <a class="nav-item" href="#network"><span class="nav-icon">⌁</span>Network</a>
         <a class="nav-item" href="#devices"><span class="nav-icon">▣</span>Devices</a>
         <a class="nav-item" href="#about"><span class="nav-icon">i</span>About</a>
@@ -33,13 +34,17 @@
     </aside>
 
     <div class="content-shell">
-      <header class="topbar" id="overview" data-tab-section="overview">
+      <header class="topbar" id="overview">
         <div>
           <span class="eyebrow">Control center</span>
-          <h1>Dashboard</h1>
-          <p class="subtitle">A live view of protection, network health, and connected devices.</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle" class="subtitle">A live view of protection, network health, and connected devices.</p>
         </div>
         <div class="header-actions">
+          <div class="alert-anchor">
+            <button id="alerts-toggle" class="alert-button" type="button" aria-label="Open alerts" aria-expanded="false" title="Alerts"><span>♧</span><i id="alert-count" class="alert-count hidden">0</i></button>
+            <div id="alerts-popover" class="alerts-popover" hidden><div class="alerts-popover-heading"><strong>Alerts</strong><button id="alerts-close" type="button" aria-label="Close alerts">×</button></div><div id="alerts-list" class="alerts-list"></div></div>
+          </div>
           <label class="theme-switch" for="theme-toggle-sidebar" aria-label="Toggle dark mode">
             <input id="theme-toggle-sidebar" type="checkbox" />
             <span class="switch-slider"></span>
@@ -52,6 +57,18 @@
       <div id="lock-banner" class="lock-banner hidden" data-tab-section="overview"></div>
 
       <main>
+        <section class="pc-view" data-tab-section="pc" aria-label="This PC management">
+          <div class="pc-heading"><div><span class="eyebrow">Local device</span><h2 id="pc-hostname">This PC</h2><p class="subtitle">System health, installed software, and local files.</p></div><div class="pc-heading-actions"><span id="pc-last-updated" class="field-note">Waiting for status</span><button id="refresh-pc" class="secondary-button" type="button">Refresh</button></div></div>
+          <div class="pc-metrics" id="pc-metrics"><div class="pc-metric"><span>CPU</span><strong id="pc-cpu">--%</strong><small id="pc-cpu-detail">-- logical processors</small></div><div class="pc-metric"><span>Memory</span><strong id="pc-memory">--</strong><small id="pc-memory-detail">-- available</small></div><div class="pc-metric"><span>Network</span><strong id="pc-network">Checking</strong><small id="pc-network-detail">Adapter status</small></div><div class="pc-metric"><span>Uptime</span><strong id="pc-uptime">--</strong><small>Since last start</small></div></div>
+          <div class="pc-columns">
+            <section class="panel pc-panel"><div class="panel-heading"><div class="panel-icon blue">▤</div><div><h3>Storage</h3><p>Local fixed drives and available capacity.</p></div></div><div id="pc-storage" class="pc-storage-list"><span class="field-note">Loading drive information...</span></div></section>
+            <section class="panel pc-panel"><div class="panel-heading"><div class="panel-icon orange">⌁</div><div><h3>Recent activity</h3><p>Processes using the most CPU time.</p></div></div><div id="pc-processes" class="pc-process-list"><span class="field-note">Loading process activity...</span></div></section>
+          </div>
+          <section class="panel pc-panel pc-apps-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon green">▦</div><div><h3>Installed apps</h3><p>Software registered for this Windows account or device.</p></div></div><div class="pc-app-actions"><input id="installed-app-search" type="search" placeholder="Search apps" aria-label="Search installed apps"><button id="refresh-installed-apps" class="secondary-button" type="button">Refresh list</button><button id="open-uninstaller" class="secondary-button" type="button">Uninstall apps</button></div></div><div id="installed-apps" class="installed-app-list"><span class="field-note">Loading installed apps...</span></div></section>
+          <section class="panel pc-panel pc-files-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon blue">▧</div><div><h3>File manager</h3><p>Browse and delete items inside a folder you choose.</p></div></div><button id="choose-pc-folder" class="connect-button" type="button">Choose folder</button></div><div id="pc-file-browser" class="pc-file-browser"><span class="field-note">Choose a folder to browse its files.</span></div></section>
+          <section class="panel pc-actions-panel"><div><div class="panel-heading"><div class="panel-icon orange">↻</div><div><h3>Maintenance</h3><p id="pc-update-message">Check for a Lockdown Blocker update or restart Windows.</p></div></div><div class="pc-maintenance-actions"><button id="pc-check-updates" class="secondary-button" type="button">Check for updates</button><button id="pc-update-action" class="secondary-button hidden" type="button">Update now</button><button id="restart-pc" class="danger-button" type="button">Restart PC</button></div></div></section>
+        </section>
+
         <section class="summary-grid" aria-label="Blocking summary" data-tab-section="overview">
           <div class="summary-card accent-blue"><span class="summary-label">Websites blocked</span><strong id="sites-count">0</strong><span>on this device</span></div>
           <div class="summary-card accent-orange"><span class="summary-label">Apps blocked</span><strong id="apps-count">0</strong><span>on this device</span></div>
