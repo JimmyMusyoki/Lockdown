@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   getPcStatus: () => ipcRenderer.invoke('get-pc-status'),
   getInstalledApps: () => ipcRenderer.invoke('get-installed-apps'),
   openAppUninstaller: () => ipcRenderer.invoke('open-app-uninstaller'),
+  openWindowsUpdate: () => ipcRenderer.invoke('open-windows-update'),
   selectPcFolder: () => ipcRenderer.invoke('select-pc-folder'),
   listPcFiles: (relativePath) => ipcRenderer.invoke('list-pc-files', relativePath),
   deletePcFile: (relativePath) => ipcRenderer.invoke('delete-pc-file', relativePath),

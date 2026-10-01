@@ -13,6 +13,7 @@ A Cold Turkey–style website & app blocker for Windows, built with Electron.
 - **LAN controller** — the same app can run as a password-protected agent on every desktop, while one desktop sends website, app, and lock commands to the others
 - **Live screen viewing** — view an opted-in saved PC without a per-request prompt; each session expires after five minutes and can be stopped from the target PC's tray
 - **LAN file sharing** — send files to a saved PC and download its shared files; each PC can disable sharing locally and transfers are limited to 50 MB per file
+- **This PC management** — view live CPU, memory, disk, network, uptime, and process activity; inspect installed apps; open Windows Update and app updates; restart Windows; and browse/delete items inside a user-selected folder with confirmation
 - **Background agent** — installed builds create a boot-time Windows agent that runs before sign-in, applies one shared rule set to every account, and opens the private-network firewall rule for the LAN agent
 - **Schedules and temporary unblock** — recurring weekday/time windows can start focus restrictions automatically, while selected website and application rules can be paused for a limited number of minutes
 

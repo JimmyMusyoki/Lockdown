@@ -109,6 +109,19 @@ const flushDnsBtn = document.getElementById('flush-dns');
 const dnsStatus = document.getElementById('dns-status');
 const activityList = document.getElementById('activity-list');
 const refreshActivityBtn = document.getElementById('refresh-activity');
+const pageTitle = document.getElementById('page-title');
+const pageSubtitle = document.getElementById('page-subtitle');
+const alertsToggle = document.getElementById('alerts-toggle');
+const alertsPopover = document.getElementById('alerts-popover');
+const alertsList = document.getElementById('alerts-list');
+const alertCount = document.getElementById('alert-count');
+const pcUpdateAction = document.getElementById('pc-update-action');
+let pcStatusSnapshot = null;
+let installedAppsSnapshot = [];
+let pcCurrentRelativePath = '';
+let pcSelectedRoot = '';
+let pcAppsLoaded = false;
+let pcRefreshTimer;
 let speedRefreshTimer;
 let discoveredDevices = [];
 let usageReadings = [];
@@ -823,6 +836,7 @@ async function loadSchedules() {
 
 function renderUpdateStatus(state) {
   if (!state) return;
+  window.__lockdownUpdateState = state;
   const currentVersion = state.currentVersion || '--';
   if (appVersionSidebar) appVersionSidebar.textContent = `v${currentVersion}`;
   if (appVersionAbout) appVersionAbout.textContent = `v${currentVersion}`;
@@ -844,6 +858,14 @@ function renderUpdateStatus(state) {
     if (state.status === 'downloaded') updateActionBtn.textContent = 'Restart and Install';
     if (state.status === 'downloading') updateActionBtn.disabled = true;
   }
+  if (pcUpdateAction) {
+    pcUpdateAction.classList.toggle('hidden', !['available', 'downloaded'].includes(state.status));
+    pcUpdateAction.disabled = state.status === 'downloading';
+    pcUpdateAction.textContent = state.status === 'downloaded' ? 'Restart and install' : 'Download update';
+  }
+  const pcUpdateMessage = document.getElementById('pc-update-message');
+  if (pcUpdateMessage) pcUpdateMessage.textContent = state.message || 'Check for a Lockdown Blocker update or restart Windows.';
+  renderPcAlerts();
   if (checkUpdatesBtn) checkUpdatesBtn.disabled = state.status === 'checking' || state.status === 'downloading';
 }
 
@@ -853,6 +875,15 @@ function markUpdateCheck() {
 
 function setActiveTab(id) {
   activeTab = id;
+  const pages = {
+    overview: ['Dashboard', 'A live view of protection, network health, and connected devices.'],
+    pc: ['This PC', 'System health, installed software, and local files.'],
+    network: ['Network', 'Discover and manage computers on your local network.'],
+    devices: ['Devices', 'Manage saved computers, groups, and focus rules.'],
+    about: ['About', 'Version and update information for Lockdown Blocker.']
+  };
+  if (pageTitle) pageTitle.textContent = pages[id]?.[0] || 'Lockdown Blocker';
+  if (pageSubtitle) pageSubtitle.textContent = pages[id]?.[1] || '';
   document.querySelectorAll('[data-tab-section]').forEach((section) => {
     section.classList.toggle('tab-visible', section.dataset.tabSection === activeTab);
   });
@@ -861,6 +892,12 @@ function setActiveTab(id) {
     item.classList.toggle('active', navId === activeTab);
   });
   clearInterval(speedRefreshTimer);
+  clearInterval(pcRefreshTimer);
+  if (activeTab === 'pc') {
+    refreshPcStatus();
+    if (!pcAppsLoaded) refreshInstalledApps();
+    pcRefreshTimer = setInterval(refreshPcStatus, 15000);
+  }
   if (activeTab === 'network') refreshActivity();
   if (activeTab === 'network') scanNetworkBtn.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (activeTab === 'devices') {
@@ -878,6 +915,141 @@ async function refreshActivity() {
       : '<span class="field-note">No LAN requests recorded.</span>';
   } catch (error) {
     activityList.textContent = error.message || 'Could not load the LAN request log.';
+  }
+}
+
+function formatPcBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(1)} TB`;
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${bytes} B`;
+}
+
+function renderPcAlerts() {
+  if (!alertsList || !alertCount) return;
+  const alerts = [];
+  if (pcStatusSnapshot?.disks) {
+    pcStatusSnapshot.disks.forEach((disk) => {
+      const size = Number(disk.Size || 0);
+      const free = Number(disk.FreeSpace || 0);
+      if (size && free / size < 0.1) alerts.push({ title: `Low storage on ${disk.DeviceID}`, detail: `${formatPcBytes(free)} remaining`, tone: 'warning' });
+    });
+  }
+  if (pcStatusSnapshot?.cpuPercent >= 90) alerts.push({ title: 'High CPU usage', detail: `CPU is at ${pcStatusSnapshot.cpuPercent}%`, tone: 'warning' });
+  const updateState = window.__lockdownUpdateState;
+  if (updateState?.status === 'available') alerts.push({ title: 'Update available', detail: updateState.message || 'A newer version is ready to download.', tone: 'info' });
+  if (updateState?.status === 'downloaded') alerts.push({ title: 'Restart to finish update', detail: 'The update is downloaded and ready to install.', tone: 'info' });
+  if (updateState?.status === 'error') alerts.push({ title: 'Update check failed', detail: updateState.message || 'Check your connection and try again.', tone: 'warning' });
+  alertCount.textContent = String(alerts.length);
+  alertCount.classList.toggle('hidden', alerts.length === 0);
+  alertsList.innerHTML = alerts.length
+    ? alerts.map((item) => `<div class="alert-row ${item.tone}"><span class="alert-indicator"></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span></div>`).join('')
+    : '<div class="alerts-empty">No active alerts.</div>';
+}
+
+async function refreshPcStatus() {
+  const updated = document.getElementById('pc-last-updated');
+  try {
+    const status = await window.api.getPcStatus();
+    pcStatusSnapshot = status;
+    document.getElementById('pc-hostname').textContent = status.hostname || 'This PC';
+    document.getElementById('pc-cpu').textContent = `${status.cpuPercent}%`;
+    document.getElementById('pc-cpu-detail').textContent = `${status.cpuCount} logical processors`;
+    const memoryUsed = status.memoryTotal - status.memoryFree;
+    document.getElementById('pc-memory').textContent = formatPcBytes(memoryUsed);
+    document.getElementById('pc-memory-detail').textContent = `${formatPcBytes(status.memoryFree)} available of ${formatPcBytes(status.memoryTotal)}`;
+    document.getElementById('pc-network').textContent = status.network || 'Offline';
+    document.getElementById('pc-network-detail').textContent = status.network ? `${status.networkCount} active network address${status.networkCount === 1 ? '' : 'es'}` : 'No active network adapter';
+    const uptimeHours = Math.floor(status.uptime / 3600);
+    document.getElementById('pc-uptime').textContent = uptimeHours >= 24 ? `${Math.floor(uptimeHours / 24)}d ${uptimeHours % 24}h` : `${uptimeHours}h ${Math.floor((status.uptime % 3600) / 60)}m`;
+    document.getElementById('pc-storage').innerHTML = status.disks.length ? status.disks.map((disk) => {
+      const size = Number(disk.Size || 0);
+      const free = Number(disk.FreeSpace || 0);
+      const usedPercent = size ? Math.round((size - free) / size * 100) : 0;
+      return `<div class="pc-drive"><div><strong>${escapeHtml(disk.DeviceID || 'Drive')}</strong><span>${formatPcBytes(free)} free of ${formatPcBytes(size)}</span></div><div class="pc-drive-bar"><i style="width:${Math.min(100, Math.max(0, usedPercent))}%"></i></div></div>`;
+    }).join('') : '<span class="field-note">No fixed drives reported.</span>';
+    document.getElementById('pc-processes').innerHTML = status.processes.length ? status.processes.map((process) => `<div class="pc-process-row"><span><strong>${escapeHtml(process.ProcessName || 'Process')}</strong><small>PID ${escapeHtml(process.Id)} · CPU ${Number(process.CPU || 0).toFixed(1)}s</small></span><span>${formatPcBytes(process.WorkingSet64)} RAM</span></div>`).join('') : '<span class="field-note">No process data available.</span>';
+    if (updated) updated.textContent = `Updated ${new Date(status.sampledAt).toLocaleTimeString()}`;
+    renderPcAlerts();
+  } catch (error) {
+    if (updated) updated.textContent = error.message || 'Status unavailable';
+    document.getElementById('pc-storage').textContent = 'Could not load drive information.';
+    document.getElementById('pc-processes').textContent = 'Could not load process activity.';
+  }
+}
+
+function renderInstalledApps() {
+  const container = document.getElementById('installed-apps');
+  const search = document.getElementById('installed-app-search').value.trim().toLowerCase();
+  const apps = installedAppsSnapshot.filter((item) => `${item.name} ${item.publisher || ''} ${item.version || ''}`.toLowerCase().includes(search));
+  container.innerHTML = apps.length ? apps.map((item) => `<div class="installed-app-row"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml([item.publisher, item.version].filter(Boolean).join(' · ') || 'Publisher or version not listed')}</small></span><button class="secondary-button" type="button" data-uninstall-app="${escapeHtml(item.name)}" title="Open Windows uninstall settings">Uninstall</button></div>`).join('') : '<span class="field-note">No matching installed apps.</span>';
+  container.querySelectorAll('[data-uninstall-app]').forEach((button) => button.addEventListener('click', openWindowsUninstaller));
+}
+
+async function refreshInstalledApps() {
+  const container = document.getElementById('installed-apps');
+  container.textContent = 'Loading installed apps...';
+  try {
+    installedAppsSnapshot = await window.api.getInstalledApps();
+    pcAppsLoaded = true;
+    renderInstalledApps();
+  } catch (error) {
+    container.textContent = error.message || 'Could not load installed apps.';
+  }
+}
+
+async function openWindowsUninstaller() {
+  try {
+    await window.api.openAppUninstaller();
+    showToast('Windows app settings opened. Select the app there to uninstall it.');
+  } catch (error) {
+    showToast(error.message || 'Could not open Windows app settings.');
+  }
+}
+
+function renderPcFiles(files) {
+  const browser = document.getElementById('pc-file-browser');
+  const currentName = pcCurrentRelativePath.split(/[\\/]/).filter(Boolean).pop() || pcSelectedRoot;
+  const parentPath = pcCurrentRelativePath.split(/[\\/]/).filter(Boolean).slice(0, -1).join(pathSeparator());
+  browser.innerHTML = `<div class="pc-file-toolbar"><div><strong>${escapeHtml(currentName)}</strong><small>${escapeHtml(pcSelectedRoot)}${pcCurrentRelativePath ? `\\${escapeHtml(pcCurrentRelativePath)}` : ''}</small></div><button id="pc-file-up" class="secondary-button" type="button" ${pcCurrentRelativePath ? '' : 'disabled'}>Up</button></div><div class="pc-file-list">${files.length ? files.map((entry) => `<div class="pc-file-row"><button class="pc-file-name" type="button" data-file-open="${escapeHtml(entry.relativePath)}" ${entry.directory ? '' : 'disabled'}><span>${entry.directory ? '▰' : '▤'}</span><strong>${escapeHtml(entry.name)}</strong></button><span>${entry.directory ? 'Folder' : formatPcBytes(entry.size)}</span><time>${escapeHtml(new Date(entry.modifiedAt).toLocaleDateString())}</time><button class="icon-action pc-file-delete" type="button" title="Delete ${escapeHtml(entry.name)}" aria-label="Delete ${escapeHtml(entry.name)}" data-file-delete="${escapeHtml(entry.relativePath)}">×</button></div>`).join('') : '<div class="alerts-empty">This folder is empty.</div>'}</div>`;
+  document.getElementById('pc-file-up').addEventListener('click', async () => openPcDirectory(parentPath));
+  browser.querySelectorAll('[data-file-open]').forEach((button) => button.addEventListener('click', () => openPcDirectory(button.dataset.fileOpen)));
+  browser.querySelectorAll('[data-file-delete]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      const deleted = await window.api.deletePcFile(button.dataset.fileDelete);
+      if (deleted) {
+        showToast('Item deleted.');
+        await openPcDirectory(pcCurrentRelativePath);
+      }
+    } catch (error) {
+      showToast(error.message || 'Could not delete this item.');
+    }
+  }));
+}
+
+function pathSeparator() {
+  return pcSelectedRoot.includes('\\') ? '\\' : '/';
+}
+
+async function openPcDirectory(relativePath) {
+  try {
+    pcCurrentRelativePath = relativePath;
+    renderPcFiles(await window.api.listPcFiles(relativePath));
+  } catch (error) {
+    document.getElementById('pc-file-browser').textContent = error.message || 'Could not open this folder.';
+  }
+}
+
+async function choosePcFolder() {
+  try {
+    const selection = await window.api.selectPcFolder();
+    if (!selection) return;
+    pcSelectedRoot = selection.path;
+    pcCurrentRelativePath = '';
+    renderPcFiles(selection.files);
+  } catch (error) {
+    showToast(error.message || 'Could not open that folder.');
   }
 }
 
@@ -993,6 +1165,48 @@ flushDnsBtn?.addEventListener('click', async () => {
   }
 });
 refreshActivityBtn?.addEventListener('click', refreshActivity);
+document.getElementById('refresh-pc')?.addEventListener('click', refreshPcStatus);
+document.getElementById('refresh-installed-apps')?.addEventListener('click', refreshInstalledApps);
+document.getElementById('installed-app-search')?.addEventListener('input', renderInstalledApps);
+document.getElementById('choose-pc-folder')?.addEventListener('click', choosePcFolder);
+document.getElementById('open-uninstaller')?.addEventListener('click', openWindowsUninstaller);
+document.getElementById('open-windows-update')?.addEventListener('click', async () => {
+  try {
+    await window.api.openWindowsUpdate();
+  } catch (error) {
+    showToast(error.message || 'Could not open Windows Update.');
+  }
+});
+document.getElementById('pc-check-updates')?.addEventListener('click', async () => {
+  document.getElementById('pc-update-message').textContent = 'Checking for updates...';
+  await window.api.checkForUpdates();
+});
+pcUpdateAction?.addEventListener('click', async () => {
+  if (window.__lockdownUpdateState?.status === 'downloaded') await window.api.installUpdate();
+  else await window.api.downloadUpdate();
+});
+document.getElementById('restart-pc')?.addEventListener('click', async () => {
+  try {
+    await window.api.restartPc();
+  } catch (error) {
+    showToast(error.message || 'Could not restart this PC.');
+  }
+});
+alertsToggle?.addEventListener('click', () => {
+  const opening = alertsPopover.hidden;
+  alertsPopover.hidden = !opening;
+  alertsToggle.setAttribute('aria-expanded', String(opening));
+});
+document.getElementById('alerts-close')?.addEventListener('click', () => {
+  alertsPopover.hidden = true;
+  alertsToggle.setAttribute('aria-expanded', 'false');
+});
+document.addEventListener('click', (event) => {
+  if (alertsPopover && !alertsPopover.hidden && !event.target.closest('.alert-anchor')) {
+    alertsPopover.hidden = true;
+    alertsToggle.setAttribute('aria-expanded', 'false');
+  }
+});
 scanNetworkBtn.addEventListener('click', scanNetwork);
 syncSavedPcsBtn?.addEventListener('click', syncSavedPcs);
 refreshSavedPcsBtn?.addEventListener('click', refreshSavedPcs);

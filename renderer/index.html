@@ -42,7 +42,7 @@
         </div>
         <div class="header-actions">
           <div class="alert-anchor">
-            <button id="alerts-toggle" class="alert-button" type="button" aria-label="Open alerts" aria-expanded="false" title="Alerts"><span>♧</span><i id="alert-count" class="alert-count hidden">0</i></button>
+            <button id="alerts-toggle" class="alert-button" type="button" aria-label="Open alerts" aria-expanded="false" title="Alerts"><span>!</span><i id="alert-count" class="alert-count hidden">0</i></button>
             <div id="alerts-popover" class="alerts-popover" hidden><div class="alerts-popover-heading"><strong>Alerts</strong><button id="alerts-close" type="button" aria-label="Close alerts">×</button></div><div id="alerts-list" class="alerts-list"></div></div>
           </div>
           <label class="theme-switch" for="theme-toggle-sidebar" aria-label="Toggle dark mode">
@@ -62,11 +62,11 @@
           <div class="pc-metrics" id="pc-metrics"><div class="pc-metric"><span>CPU</span><strong id="pc-cpu">--%</strong><small id="pc-cpu-detail">-- logical processors</small></div><div class="pc-metric"><span>Memory</span><strong id="pc-memory">--</strong><small id="pc-memory-detail">-- available</small></div><div class="pc-metric"><span>Network</span><strong id="pc-network">Checking</strong><small id="pc-network-detail">Adapter status</small></div><div class="pc-metric"><span>Uptime</span><strong id="pc-uptime">--</strong><small>Since last start</small></div></div>
           <div class="pc-columns">
             <section class="panel pc-panel"><div class="panel-heading"><div class="panel-icon blue">▤</div><div><h3>Storage</h3><p>Local fixed drives and available capacity.</p></div></div><div id="pc-storage" class="pc-storage-list"><span class="field-note">Loading drive information...</span></div></section>
-            <section class="panel pc-panel"><div class="panel-heading"><div class="panel-icon orange">⌁</div><div><h3>Recent activity</h3><p>Processes using the most CPU time.</p></div></div><div id="pc-processes" class="pc-process-list"><span class="field-note">Loading process activity...</span></div></section>
+            <section class="panel pc-panel"><div class="panel-heading"><div class="panel-icon orange">⌁</div><div><h3>Recent activity</h3><p>Current processes with the highest accumulated CPU time.</p></div></div><div id="pc-processes" class="pc-process-list"><span class="field-note">Loading process activity...</span></div></section>
           </div>
           <section class="panel pc-panel pc-apps-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon green">▦</div><div><h3>Installed apps</h3><p>Software registered for this Windows account or device.</p></div></div><div class="pc-app-actions"><input id="installed-app-search" type="search" placeholder="Search apps" aria-label="Search installed apps"><button id="refresh-installed-apps" class="secondary-button" type="button">Refresh list</button><button id="open-uninstaller" class="secondary-button" type="button">Uninstall apps</button></div></div><div id="installed-apps" class="installed-app-list"><span class="field-note">Loading installed apps...</span></div></section>
           <section class="panel pc-panel pc-files-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon blue">▧</div><div><h3>File manager</h3><p>Browse and delete items inside a folder you choose.</p></div></div><button id="choose-pc-folder" class="connect-button" type="button">Choose folder</button></div><div id="pc-file-browser" class="pc-file-browser"><span class="field-note">Choose a folder to browse its files.</span></div></section>
-          <section class="panel pc-actions-panel"><div><div class="panel-heading"><div class="panel-icon orange">↻</div><div><h3>Maintenance</h3><p id="pc-update-message">Check for a Lockdown Blocker update or restart Windows.</p></div></div><div class="pc-maintenance-actions"><button id="pc-check-updates" class="secondary-button" type="button">Check for updates</button><button id="pc-update-action" class="secondary-button hidden" type="button">Update now</button><button id="restart-pc" class="danger-button" type="button">Restart PC</button></div></div></section>
+          <section class="panel pc-actions-panel"><div><div class="panel-heading"><div class="panel-icon orange">↻</div><div><h3>Maintenance</h3><p id="pc-update-message">Check Lockdown Blocker updates, open Windows Update, or restart this PC.</p></div></div><div class="pc-maintenance-actions"><button id="pc-check-updates" class="secondary-button" type="button">Check app updates</button><button id="pc-update-action" class="secondary-button hidden" type="button">Update app</button><button id="open-windows-update" class="secondary-button" type="button">Windows Update</button><button id="restart-pc" class="danger-button" type="button">Restart PC</button></div></div></section>
         </section>
 
         <section class="summary-grid" aria-label="Blocking summary" data-tab-section="overview">
@@ -85,6 +85,7 @@
             <div class="panel-heading"><div class="panel-icon green">●</div><div><h3>Device status</h3><p>Online devices discovered on your network.</p></div></div>
             <div class="status-counts"><div><strong id="dashboard-online">0</strong><span>Online</span></div><div><strong id="dashboard-offline">0</strong><span>Offline</span></div></div>
             <div id="dashboard-device-list" class="dashboard-device-list"><span class="chart-empty">Scan Network to see devices here.</span></div>
+            <button class="secondary-button dashboard-link" data-go-tab="pc">View this PC</button>
             <button class="secondary-button dashboard-link" data-go-tab="network">Open Network</button>
           </div>
         </section>

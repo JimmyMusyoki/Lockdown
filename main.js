@@ -731,7 +731,8 @@ function resolvePcFile(relativePath = '') {
   if (!pcFileRoot) throw new Error('Choose a folder before browsing files.');
   const target = path.resolve(pcFileRoot, String(relativePath));
   const root = path.resolve(pcFileRoot);
-  if (target !== root && !target.startsWith(`${root}${path.sep}`)) throw new Error('That location is outside the selected folder.');
+  const relative = path.relative(root, target);
+  if (relative && (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`))) throw new Error('That location is outside the selected folder.');
   return target;
 }
 
@@ -751,8 +752,8 @@ ipcMain.handle('get-pc-status', async () => {
     uptime: os.uptime(),
     network: interfaces[0]?.address || null,
     networkCount: interfaces.length,
-    disks: Array.isArray(disks) ? disks : [disks],
-    processes: Array.isArray(processes) ? processes : [processes],
+    disks: Array.isArray(disks) ? disks : disks ? [disks] : [],
+    processes: Array.isArray(processes) ? processes : processes ? [processes] : [],
     sampledAt: Date.now()
   };
 });
@@ -768,20 +769,29 @@ ipcMain.handle('open-app-uninstaller', async () => {
   return true;
 });
 
+ipcMain.handle('open-windows-update', async () => {
+  await shell.openExternal('ms-settings:windowsupdate');
+  return true;
+});
+
 ipcMain.handle('select-pc-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
   if (result.canceled || !result.filePaths[0]) return null;
-  pcFileRoot = result.filePaths[0];
+  pcFileRoot = await fs.promises.realpath(result.filePaths[0]);
   return { path: pcFileRoot, files: await listPcFiles('') };
 });
 
 async function listPcFiles(relativePath) {
   const directory = resolvePcFile(relativePath);
-  const stat = await fs.promises.lstat(directory);
+  const root = await fs.promises.realpath(pcFileRoot);
+  const realDirectory = await fs.promises.realpath(directory);
+  const relative = path.relative(root, realDirectory);
+  if (relative && (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`))) throw new Error('That location is outside the selected folder.');
+  const stat = await fs.promises.lstat(realDirectory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Choose a regular folder to browse.');
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  const entries = await fs.promises.readdir(realDirectory, { withFileTypes: true });
   const files = await Promise.all(entries.map(async (entry) => {
-    const fullPath = path.join(directory, entry.name);
+    const fullPath = path.join(realDirectory, entry.name);
     const info = await fs.promises.lstat(fullPath);
     return {
       name: entry.name,
@@ -799,6 +809,10 @@ ipcMain.handle('list-pc-files', (_event, relativePath) => listPcFiles(String(rel
 ipcMain.handle('delete-pc-file', async (_event, relativePath) => {
   const target = resolvePcFile(relativePath);
   if (target === path.resolve(pcFileRoot)) throw new Error('The selected folder itself cannot be deleted.');
+  const root = await fs.promises.realpath(pcFileRoot);
+  const realParent = await fs.promises.realpath(path.dirname(target));
+  const relativeParent = path.relative(root, realParent);
+  if (relativeParent && (path.isAbsolute(relativeParent) || relativeParent === '..' || relativeParent.startsWith(`..${path.sep}`))) throw new Error('That location is outside the selected folder.');
   const info = await fs.promises.lstat(target);
   const confirmation = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
