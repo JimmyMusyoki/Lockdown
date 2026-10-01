@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog, desktopCapturer, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { pipeline } = require('stream/promises');
 const https = require('https');
 
@@ -37,6 +38,7 @@ let updateTimer;
 let scheduleTimer;
 let isQuitting = false;
 let automaticUpdates = true;
+let pcFileRoot = null;
 const certificatePins = new Map();
 const REMOTE_REQUEST_TIMEOUT_MS = 8000;
 // The SYSTEM boot agent must not claim the interactive user's single-instance
@@ -702,6 +704,131 @@ app.on('window-all-closed', () => {
 });
 
 // ---------- IPC handlers (renderer <-> main) ----------
+
+function runPowerShellJson(command) {
+  if (process.platform !== 'win32') throw new Error('This PC management feature requires Windows.');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15000,
+    maxBuffer: 2 * 1024 * 1024
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error((result.stderr || 'Windows could not provide this information.').trim());
+  const output = result.stdout.trim();
+  return output ? JSON.parse(output) : [];
+}
+
+function getCpuUsage(before, after) {
+  const previous = before.reduce((total, cpu) => total + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
+  const current = after.reduce((total, cpu) => total + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
+  const idleBefore = before.reduce((total, cpu) => total + cpu.times.idle, 0);
+  const idleAfter = after.reduce((total, cpu) => total + cpu.times.idle, 0);
+  return current === previous ? 0 : Math.round((1 - (idleAfter - idleBefore) / (current - previous)) * 100);
+}
+
+function resolvePcFile(relativePath = '') {
+  if (!pcFileRoot) throw new Error('Choose a folder before browsing files.');
+  const target = path.resolve(pcFileRoot, String(relativePath));
+  const root = path.resolve(pcFileRoot);
+  if (target !== root && !target.startsWith(`${root}${path.sep}`)) throw new Error('That location is outside the selected folder.');
+  return target;
+}
+
+ipcMain.handle('get-pc-status', async () => {
+  const before = os.cpus();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const after = os.cpus();
+  const disks = runPowerShellJson("Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress");
+  const processes = runPowerShellJson("Get-Process | Sort-Object CPU -Descending | Select-Object -First 8 ProcessName,Id,CPU,WorkingSet64 | ConvertTo-Json -Compress");
+  const interfaces = Object.values(os.networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal);
+  return {
+    hostname: os.hostname(),
+    cpuPercent: getCpuUsage(before, after),
+    cpuCount: after.length,
+    memoryTotal: os.totalmem(),
+    memoryFree: os.freemem(),
+    uptime: os.uptime(),
+    network: interfaces[0]?.address || null,
+    networkCount: interfaces.length,
+    disks: Array.isArray(disks) ? disks : [disks],
+    processes: Array.isArray(processes) ? processes : [processes],
+    sampledAt: Date.now()
+  };
+});
+
+ipcMain.handle('get-installed-apps', () => {
+  const command = "$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); $apps=foreach($key in $paths){Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -and -not $_.SystemComponent} | Select-Object @{n='name';e={$_.DisplayName}},@{n='version';e={$_.DisplayVersion}},@{n='publisher';e={$_.Publisher}}}; $apps | Sort-Object name -Unique | ConvertTo-Json -Compress";
+  const apps = runPowerShellJson(command);
+  return (Array.isArray(apps) ? apps : [apps]).filter((item) => item?.name);
+});
+
+ipcMain.handle('open-app-uninstaller', async () => {
+  await shell.openExternal('ms-settings:appsfeatures');
+  return true;
+});
+
+ipcMain.handle('select-pc-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return null;
+  pcFileRoot = result.filePaths[0];
+  return { path: pcFileRoot, files: await listPcFiles('') };
+});
+
+async function listPcFiles(relativePath) {
+  const directory = resolvePcFile(relativePath);
+  const stat = await fs.promises.lstat(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Choose a regular folder to browse.');
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(entries.map(async (entry) => {
+    const fullPath = path.join(directory, entry.name);
+    const info = await fs.promises.lstat(fullPath);
+    return {
+      name: entry.name,
+      relativePath: path.relative(pcFileRoot, fullPath),
+      directory: info.isDirectory() && !info.isSymbolicLink(),
+      size: info.isFile() ? info.size : null,
+      modifiedAt: info.mtimeMs
+    };
+  }));
+  return files.sort((left, right) => Number(right.directory) - Number(left.directory) || left.name.localeCompare(right.name));
+}
+
+ipcMain.handle('list-pc-files', (_event, relativePath) => listPcFiles(String(relativePath || '')));
+
+ipcMain.handle('delete-pc-file', async (_event, relativePath) => {
+  const target = resolvePcFile(relativePath);
+  if (target === path.resolve(pcFileRoot)) throw new Error('The selected folder itself cannot be deleted.');
+  const info = await fs.promises.lstat(target);
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Delete', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Delete this item?',
+    message: `Permanently delete “${path.basename(target)}”?`,
+    detail: info.isDirectory() && !info.isSymbolicLink() ? 'This also deletes everything inside this folder.' : 'This action cannot be undone.'
+  });
+  if (confirmation.response !== 0) return false;
+  await fs.promises.rm(target, { recursive: info.isDirectory() && !info.isSymbolicLink() });
+  return true;
+});
+
+ipcMain.handle('restart-pc', async () => {
+  if (process.platform !== 'win32') throw new Error('Restart is available on Windows only.');
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Restart PC', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Restart this PC?',
+    message: 'Windows will restart now.',
+    detail: 'Save your work before continuing.'
+  });
+  if (confirmation.response !== 0) return false;
+  spawnSync('shutdown.exe', ['/r', '/t', '0'], { windowsHide: true });
+  return true;
+});
 
 ipcMain.handle('get-data', () => store.load());
 
