@@ -3,5 +3,7 @@ node_modules/
 dist/
 dist-sync/
 dist-sync2/
-build/
+!build/
+build/*
+!build/installer.nsh
 *.log
