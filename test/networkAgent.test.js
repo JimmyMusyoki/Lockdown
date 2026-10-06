@@ -51,14 +51,21 @@ test('remote PC activity command returns the agent process snapshot', async () =
     hostname: 'study-pc',
     uptime: 30 * 24 * 60 * 60,
     disks: [{ DeviceID: 'C:', Size: 1000, FreeSpace: 50 }],
-    updateStatus: { status: 'available', availableVersion: '1.2.0' }
+    updateStatus: { status: 'available', availableVersion: '1.2.0' },
+    usbStorageBlocked: false
   };
+  let usbStorageBlocked = false;
 
   try {
     await startNetworkAgent({
       getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
       getPcActivity: () => processes,
       getPcAttention: () => attention,
+      getUsbStorageBlocked: () => usbStorageBlocked,
+      setUsbStorageBlocked: (blocked) => {
+        usbStorageBlocked = Boolean(blocked);
+        return { blocked: usbStorageBlocked, requiresReconnect: true };
+      },
       startWindowsUpdateInstall: () => ({ jobId: 'update-job-1', status: 'running' }),
       getWindowsUpdateInstallStatus: (jobId) => ({ jobId, status: 'complete', message: '2 updates installed.' }),
       certificateDirectory: path.join(temporaryDirectory, 'certificates'),
@@ -146,6 +153,39 @@ test('remote PC activity command returns the agent process snapshot', async () =
       })
     });
     assert.equal(unauthorizedResponse.status, 400);
+
+    const usbStateNonce = await getChallenge(port);
+    const usbStateResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: usbStateNonce,
+        timestamp: Date.now(),
+        requestId: 'usb-state-request-12345678',
+        command: 'get-usb-storage-state',
+        payload: null,
+        role: 'operator'
+      })
+    });
+    assert.equal(usbStateResponse.status, 200);
+    assert.equal(JSON.parse(usbStateResponse.body.toString()).data, false);
+
+    const usbBlockNonce = await getChallenge(port);
+    const usbBlockResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: usbBlockNonce,
+        timestamp: Date.now(),
+        requestId: 'usb-block-request-12345678',
+        command: 'set-usb-storage-blocked',
+        payload: { blocked: true },
+        role: 'admin'
+      })
+    });
+    assert.equal(usbBlockResponse.status, 200);
+    assert.deepEqual(JSON.parse(usbBlockResponse.body.toString()).data, { blocked: true, requiresReconnect: true });
+    assert.equal(usbStorageBlocked, true);
   } finally {
     stopNetworkAgent();
     await fs.rm(temporaryDirectory, { recursive: true, force: true });

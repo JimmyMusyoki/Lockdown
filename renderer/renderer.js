@@ -66,7 +66,11 @@ const groupSelectionHelp = document.getElementById('group-selection-help');
 const focusSelectedBtn = document.getElementById('focus-selected');
 const blockWebsitesSelectedBtn = document.getElementById('block-websites-selected');
 const blockAppsSelectedBtn = document.getElementById('block-apps-selected');
+const blockUsbSelectedBtn = document.getElementById('block-usb-selected');
+const allowUsbSelectedBtn = document.getElementById('allow-usb-selected');
 const shutdownSelectedBtn = document.getElementById('shutdown-selected');
+const usbStorageToggle = document.getElementById('usb-storage-blocked');
+const usbStorageStatus = document.getElementById('usb-storage-status');
 const viewSelectedScreenBtn = document.getElementById('view-selected-screen');
 const openSelectedFileSharingBtn = document.getElementById('open-selected-file-sharing');
 const remoteToolsHint = document.getElementById('remote-tools-hint');
@@ -401,7 +405,9 @@ function renderSavedPcCards() {
   savedPcCards.innerHTML = devices.map((device) => {
     const attention = remotePcAttentionAlerts(device);
     const description = attention.map((item) => `${item.title}: ${item.detail}`).join('\n');
-    return `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span><span class="saved-card-attention ${attention.length ? '' : 'hidden'}" role="img" aria-label="${escapeHtml(description || 'No attention items')}" title="${escapeHtml(description)}"><span class="attention-icon icon-glyph" aria-hidden="true"></span><span>${attention.length}</span></span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-activity="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`;
+    const usbBlocked = remotePcAttention.get(device.ip)?.health?.usbStorageBlocked;
+    const usbLabel = usbBlocked === true ? 'Allow USB storage' : usbBlocked === false ? 'Block USB storage' : 'USB storage';
+    return `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span><span class="saved-card-attention ${attention.length ? '' : 'hidden'}" role="img" aria-label="${escapeHtml(description || 'No attention items')}" title="${escapeHtml(description)}"><span class="attention-icon icon-glyph" aria-hidden="true"></span><span>${attention.length}</span></span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-activity="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button><button data-card-usb="${escapeHtml(device.ip)}">${usbLabel}</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`;
   }).join('');
   savedPcCards.querySelectorAll('[data-card-activity]').forEach((button) => button.addEventListener('click', () => {
     const device = savedDevices().find((item) => item.ip === button.dataset.cardActivity);
@@ -410,6 +416,7 @@ function renderSavedPcCards() {
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-apps]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardApps, 'update-apps')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
+  savedPcCards.querySelectorAll('[data-card-usb]').forEach((button) => button.addEventListener('click', () => toggleSavedUsbStorage(button.dataset.cardUsb)));
   savedPcCards.querySelectorAll('[data-card-shutdown]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardShutdown, 'shutdown')));
   savedPcCards.querySelectorAll('[data-saved-select]').forEach((input) => input.addEventListener('change', updateSavedSelectionState));
   updateSavedSelectionState();
@@ -461,6 +468,7 @@ function updateSavedSelectionState() {
     ? `${selected} PC${selected === 1 ? '' : 's'} selected — choose an action below.`
     : 'Select one PC, several PCs, or every PC in this group.';
   [focusSelectedBtn, blockWebsitesSelectedBtn, blockAppsSelectedBtn, shutdownSelectedBtn].forEach((button) => { button.disabled = selected === 0; });
+  [blockUsbSelectedBtn, allowUsbSelectedBtn].forEach((button) => { button.disabled = selected === 0; });
 }
 
 async function refreshSavedPcStatuses(devices) {
@@ -495,7 +503,47 @@ async function refreshSavedPcStatuses(devices) {
     }
   }));
   devices.forEach((device) => updateSavedCardAttention(savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`), device));
+  devices.forEach((device) => updateSavedCardUsbButton(savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`), device));
   renderPcAlerts();
+}
+
+function updateSavedCardUsbButton(card, device) {
+  const button = card?.querySelector('[data-card-usb]');
+  if (!button) return;
+  const blocked = remotePcAttention.get(device.ip)?.health?.usbStorageBlocked;
+  button.textContent = blocked === true ? 'Allow USB storage' : blocked === false ? 'Block USB storage' : 'USB storage';
+}
+
+async function toggleSavedUsbStorage(ip) {
+  const device = savedDevices().find((item) => item.ip === ip);
+  if (!device) return;
+  const local = isCurrentDevice(device);
+  try {
+    const blocked = local
+      ? await window.api.getUsbStorageBlocked()
+      : await window.api.remoteCommand(`${ip}:47821`, agentSessionPassword(), 'get-usb-storage-state', null, 'operator');
+    const result = local
+      ? await window.api.setUsbStorageBlocked(!blocked)
+      : await window.api.remoteCommand(`${ip}:47821`, agentSessionPassword(), 'set-usb-storage-blocked', { blocked: !blocked }, 'admin');
+    showToast(`${result.blocked ? 'USB storage blocked' : 'USB storage allowed'} on ${device.name || ip}. Reconnect USB drives to apply.`);
+    await refreshSavedPcStatuses([device]);
+  } catch (error) {
+    showToast(remoteFailureMessage(error, device));
+  }
+}
+
+async function setUsbStorageForDevices(devices, blocked) {
+  if (!devices.length) return showToast('Select at least one PC.');
+  const results = await Promise.allSettled(devices.map((device) => isCurrentDevice(device)
+    ? window.api.setUsbStorageBlocked(blocked)
+    : window.api.remoteCommand(`${device.ip}:47821`, agentSessionPassword(), 'set-usb-storage-blocked', { blocked }, 'admin')));
+  const succeeded = results.filter((result) => result.status === 'fulfilled').length;
+  const failure = results.find((result) => result.status === 'rejected');
+  const failedDevice = failure ? devices[results.findIndex((result) => result.status === 'rejected')] : null;
+  showToast(succeeded
+    ? `${blocked ? 'USB storage blocked' : 'USB storage allowed'} on ${succeeded}/${devices.length} PC${devices.length === 1 ? '' : 's'}. Reconnect USB drives to apply.${failure ? ` ${remoteFailureMessage(failure.reason, failedDevice)}` : ''}`
+    : remoteFailureMessage(failure?.reason, failedDevice));
+  await refreshSavedPcStatuses(devices);
 }
 
 async function runSavedDeviceTask(ip, command) {
@@ -1069,6 +1117,10 @@ async function refreshPcStatus() {
   try {
     const status = await window.api.getPcStatus();
     pcStatusSnapshot = status;
+    if (usbStorageToggle) usbStorageToggle.checked = status.usbStorageBlocked === true;
+    if (usbStorageStatus) usbStorageStatus.textContent = status.usbStorageBlocked
+      ? 'USB storage is blocked. Reconnect drives after changing this setting.'
+      : 'USB keyboards and mice are not affected.';
     document.getElementById('pc-hostname').textContent = status.hostname || 'This PC';
     document.getElementById('pc-cpu').textContent = `${status.cpuPercent}%`;
     document.getElementById('pc-cpu-detail').textContent = `${status.cpuCount} logical processors`;
@@ -1346,6 +1398,22 @@ document.getElementById('restart-pc')?.addEventListener('click', async () => {
     showToast(error.message || 'Could not restart this PC.');
   }
 });
+usbStorageToggle?.addEventListener('change', async () => {
+  const requested = usbStorageToggle.checked;
+  usbStorageToggle.disabled = true;
+  try {
+    const result = await window.api.setUsbStorageBlocked(requested);
+    usbStorageToggle.checked = result.blocked;
+    usbStorageStatus.textContent = `${result.blocked ? 'USB storage is blocked.' : 'USB storage is allowed.'} Reconnect drives after changing this setting.`;
+    showToast(result.message || usbStorageStatus.textContent);
+  } catch (error) {
+    usbStorageToggle.checked = !requested;
+    usbStorageStatus.textContent = error.message || 'Could not change USB storage access.';
+    showToast(usbStorageStatus.textContent);
+  } finally {
+    usbStorageToggle.disabled = false;
+  }
+});
 alertsToggle?.addEventListener('click', () => {
   const opening = alertsPopover.hidden;
   alertsPopover.hidden = !opening;
@@ -1408,6 +1476,8 @@ blockAppsSelectedBtn.addEventListener('click', () => {
   if (!devices.length) return showToast('Select at least one device');
   runBulkCommand(devices, 'update-apps', 'Application block sent');
 });
+blockUsbSelectedBtn.addEventListener('click', () => setUsbStorageForDevices(selectedSavedDevices(), true));
+allowUsbSelectedBtn.addEventListener('click', () => setUsbStorageForDevices(selectedSavedDevices(), false));
 shutdownSelectedBtn.addEventListener('click', () => {
   const devices = selectedSavedDevices();
   if (!devices.length) {

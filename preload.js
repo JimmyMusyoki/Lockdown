@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('api', {
   getData: () => ipcRenderer.invoke('get-data'),
   getActivity: () => ipcRenderer.invoke('get-activity'),
   getPcStatus: () => ipcRenderer.invoke('get-pc-status'),
+  getUsbStorageBlocked: () => ipcRenderer.invoke('get-usb-storage-blocked'),
+  setUsbStorageBlocked: (blocked) => ipcRenderer.invoke('set-usb-storage-blocked', blocked),
   getInstalledApps: () => ipcRenderer.invoke('get-installed-apps'),
   openAppUninstaller: () => ipcRenderer.invoke('open-app-uninstaller'),
   installWindowsUpdates: () => ipcRenderer.invoke('install-windows-updates'),

@@ -9,6 +9,8 @@ const refreshButton = document.getElementById('refresh-remote');
 const sitesInput = document.getElementById('blocked-sites');
 const appsInput = document.getElementById('blocked-apps');
 const lockStatus = document.getElementById('lock-status');
+const usbStorageToggle = document.getElementById('usb-storage-blocked');
+const usbStorageStatus = document.getElementById('usb-storage-status');
 const remotePc = { host, name: remoteName };
 
 document.getElementById('remote-name').textContent = remoteName;
@@ -58,6 +60,14 @@ async function loadRemoteData() {
     lockStatus.textContent = data.lock?.active
       ? `Locked until ${data.lock.unlockAt ? new Date(data.lock.unlockAt).toLocaleString() : 'timer ends'}`
       : 'No active focus lock';
+    try {
+      usbStorageToggle.checked = await command('get-usb-storage-state');
+      usbStorageStatus.textContent = usbStorageToggle.checked
+        ? 'USB storage is blocked. Reconnect drives after changing this setting.'
+        : 'USB keyboards and mice are not affected.';
+    } catch (error) {
+      usbStorageStatus.textContent = error.message || 'USB storage status is unavailable on this PC.';
+    }
     await refreshProcesses();
     showMessage('Connected to remote PC.');
   } catch (error) {
@@ -125,6 +135,22 @@ document.getElementById('install-windows-updates').addEventListener('click', asy
     button.textContent = 'Install Windows updates';
     statusLabel.textContent = error.message || 'Could not start Windows Update.';
     showMessage(statusLabel.textContent, true);
+  }
+});
+usbStorageToggle.addEventListener('change', async () => {
+  const requested = usbStorageToggle.checked;
+  usbStorageToggle.disabled = true;
+  try {
+    const result = await command('set-usb-storage-blocked', { blocked: requested }, 'admin');
+    usbStorageToggle.checked = result.blocked;
+    usbStorageStatus.textContent = `${result.blocked ? 'USB storage is blocked.' : 'USB storage is allowed.'} Reconnect drives after changing this setting.`;
+    showMessage(result.message || usbStorageStatus.textContent);
+  } catch (error) {
+    usbStorageToggle.checked = !requested;
+    usbStorageStatus.textContent = error.message || 'Could not change USB storage access.';
+    showMessage(usbStorageStatus.textContent, true);
+  } finally {
+    usbStorageToggle.disabled = false;
   }
 });
 document.getElementById('shutdown').addEventListener('click', async () => {

@@ -709,6 +709,8 @@ app.whenReady().then(() => {
         updateApps,
         getPcActivity,
         getPcAttention,
+        getUsbStorageBlocked,
+        setUsbStorageBlocked,
         startWindowsUpdateInstall,
         getWindowsUpdateInstallStatus,
         startLock,
@@ -867,8 +869,47 @@ function getPcAttention() {
       message: updateState.message
     },
     windowsUpdate: windowsUpdateSnapshot,
+    usbStorageBlocked: getUsbStorageBlocked(),
     sampledAt: Date.now()
   };
+}
+
+function readUsbStorageStart() {
+  const result = runPowerShellJson("$key='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR'; if(-not (Test-Path $key)){ throw 'USB storage service registry key was not found.' }; [pscustomobject]@{ start=[int](Get-ItemPropertyValue -Path $key -Name Start) } | ConvertTo-Json -Compress");
+  return Number(result.start);
+}
+
+function writeUsbStorageStart(value) {
+  const start = Number(value);
+  if (![3, 4].includes(start)) throw new RangeError('USB storage startup value must be 3 or 4.');
+  const result = runPowerShellJson(`$key='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR'; if(-not (Test-Path $key)){ throw 'USB storage service registry key was not found.' }; New-ItemProperty -Path $key -Name Start -PropertyType DWord -Value ${start} -Force | Out-Null; [pscustomobject]@{ start=[int](Get-ItemPropertyValue -Path $key -Name Start) } | ConvertTo-Json -Compress`);
+  if (Number(result.start) !== start) throw new Error('Windows did not apply the USB storage setting.');
+  return start;
+}
+
+function getUsbStorageBlocked() {
+  if (process.platform !== 'win32') throw new Error('USB storage controls require Windows.');
+  return readUsbStorageStart() === 4;
+}
+
+function setUsbStorageBlocked(blocked) {
+  if (process.platform !== 'win32') throw new Error('USB storage controls require Windows.');
+  const data = store.load();
+  if (Boolean(blocked)) {
+    const currentStart = readUsbStorageStart();
+    const previousStart = data.usbStorage?.managed === true ? Number(data.usbStorage.previousStart) : currentStart;
+    writeUsbStorageStart(4);
+    data.usbStorage = { managed: true, previousStart: [3, 4].includes(previousStart) ? previousStart : currentStart };
+  } else {
+    const previousStart = Number(data.usbStorage?.previousStart);
+    const restoreStart = data.usbStorage?.managed === true && [3, 4].includes(previousStart) ? previousStart : 3;
+    writeUsbStorageStart(restoreStart);
+    delete data.usbStorage;
+  }
+  store.save(data);
+  const actualBlocked = readUsbStorageStart() === 4;
+  recordActivity(actualBlocked ? 'USB storage blocked' : 'USB storage allowed', 'Windows USB mass-storage driver');
+  return { blocked: actualBlocked, requiresReconnect: true, message: 'Disconnect and reconnect USB drives for the change to take effect.' };
 }
 
 function resolvePcFile(relativePath = '') {
@@ -896,6 +937,7 @@ ipcMain.handle('get-pc-status', async () => {
     memoryFree: os.freemem(),
     uptime: os.uptime(),
     windowsUpdate: windowsUpdateSnapshot,
+    usbStorageBlocked: getUsbStorageBlocked(),
     network: interfaces[0]?.address || null,
     networkCount: interfaces.length,
     disks: Array.isArray(disks) ? disks : disks ? [disks] : [],
@@ -903,6 +945,9 @@ ipcMain.handle('get-pc-status', async () => {
     sampledAt: Date.now()
   };
 });
+
+ipcMain.handle('get-usb-storage-blocked', () => getUsbStorageBlocked());
+ipcMain.handle('set-usb-storage-blocked', (_evt, blocked) => setUsbStorageBlocked(blocked));
 
 ipcMain.handle('get-installed-apps', () => {
   const command = "$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); $apps=foreach($key in $paths){Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -and -not $_.SystemComponent} | Select-Object @{n='name';e={$_.DisplayName}},@{n='version';e={$_.DisplayVersion}},@{n='publisher';e={$_.Publisher}}}; $apps | Sort-Object name -Unique | ConvertTo-Json -Compress";

@@ -43,6 +43,7 @@ main { padding: 20px 0 28px; }
 .task-section p { margin: 8px 0; font-size: 11px; }
 .task-section textarea { display: block; width: 100%; min-height: 126px; margin: 10px 0; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: var(--white); font: 12px/1.5 Consolas, monospace; }
 .windows-update-section { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }.windows-update-section h2 { margin: 2px 0; }.windows-update-section p { margin: 0; font-size: 11px; }
+.storage-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 650; cursor: pointer; }.storage-toggle input { width: 17px; height: 17px; margin: 0; accent-color: var(--green); }
 .lock-section { display: flex; align-items: center; gap: 10px; padding: 18px 0; border-bottom: 1px solid var(--line); }
 .lock-section > div { flex: 1; }
 .lock-section h2 { margin: 2px 0; }
