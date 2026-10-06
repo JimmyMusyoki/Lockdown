@@ -673,6 +673,7 @@ app.whenReady().then(() => {
         getNetworkGroups: () => store.load().network?.groups || [],
         updateSites,
         updateApps,
+        getPcActivity,
         startLock,
         getActivity,
         mergeNetworkGroup,
@@ -727,6 +728,11 @@ function getCpuUsage(before, after) {
   return current === previous ? 0 : Math.round((1 - (idleAfter - idleBefore) / (current - previous)) * 100);
 }
 
+function getPcActivity() {
+  const processes = runPowerShellJson("Get-Process | Sort-Object CPU -Descending | Select-Object -First 8 ProcessName,Id,CPU,WorkingSet64 | ConvertTo-Json -Compress");
+  return Array.isArray(processes) ? processes : processes ? [processes] : [];
+}
+
 function resolvePcFile(relativePath = '') {
   if (!pcFileRoot) throw new Error('Choose a folder before browsing files.');
   const target = path.resolve(pcFileRoot, String(relativePath));
@@ -741,7 +747,7 @@ ipcMain.handle('get-pc-status', async () => {
   await new Promise((resolve) => setTimeout(resolve, 250));
   const after = os.cpus();
   const disks = runPowerShellJson("Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress");
-  const processes = runPowerShellJson("Get-Process | Sort-Object CPU -Descending | Select-Object -First 8 ProcessName,Id,CPU,WorkingSet64 | ConvertTo-Json -Compress");
+  const processes = getPcActivity();
   const interfaces = Object.values(os.networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal);
   return {
     hostname: os.hostname(),
@@ -753,7 +759,7 @@ ipcMain.handle('get-pc-status', async () => {
     network: interfaces[0]?.address || null,
     networkCount: interfaces.length,
     disks: Array.isArray(disks) ? disks : disks ? [disks] : [],
-    processes: Array.isArray(processes) ? processes : processes ? [processes] : [],
+    processes,
     sampledAt: Date.now()
   };
 });

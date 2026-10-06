@@ -40,6 +40,44 @@ test('request proof covers command, payload, role, and request metadata', () => 
   assert.notEqual(proof, createRequestProof(hashPassword('test-password'), { ...base, requestId: 'different-request-123' }));
 });
 
+test('remote PC activity command returns the agent process snapshot', async () => {
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lockdown-pc-activity-'));
+  const portReservation = net.createServer();
+  await new Promise((resolve) => portReservation.listen(0, '127.0.0.1', resolve));
+  const { port } = portReservation.address();
+  await new Promise((resolve) => portReservation.close(resolve));
+  const processes = [{ ProcessName: 'study-app', Id: 42, CPU: 12.5, WorkingSet64: 4096 }];
+
+  try {
+    await startNetworkAgent({
+      getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
+      getPcActivity: () => processes,
+      certificateDirectory: path.join(temporaryDirectory, 'certificates'),
+      port
+    });
+
+    const nonce = await getChallenge(port);
+    const response = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce,
+        timestamp: Date.now(),
+        requestId: 'pc-activity-request-123456',
+        command: 'get-pc-activity',
+        payload: null,
+        role: 'operator'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(response.body.toString()).data, processes);
+  } finally {
+    stopNetworkAgent();
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
 test('shared files transfer through a one-use challenge without target-side opt-in', async () => {
   const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lockdown-file-share-'));
   const portReservation = net.createServer();

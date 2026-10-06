@@ -133,6 +133,17 @@ let selectedSavedKeys = new Set();
 let editingGroupId = null;
 let visibleGroupId = null;
 const gamingApps = ['steam.exe', 'epicgameslauncher.exe', 'riotclientservices.exe', 'battle.net.exe'];
+const gamingSites = [
+  'steampowered.com', 'store.steampowered.com', 'help.steampowered.com', 'steamcommunity.com', 'steamstatic.com',
+  'steamcontent.com', 'steamgames.com', 'steam-chat.com', 'steamserver.net', 'steamusercontent.com', 'steam.tv',
+  'epicgames.com', 'store.epicgames.com', 'epicgames.dev', 'riotgames.com', 'leagueoflegends.com', 'valorant.com',
+  'playvalorant.com', 'riotcdn.net', 'pvp.net', 'battle.net', 'us.battle.net', 'eu.battle.net', 'blizzard.com', 'blizzard.net',
+  'roblox.com', 'web.roblox.com', 'games.roblox.com', 'auth.roblox.com', 'api.roblox.com', 'robloxcdn.com', 'rbxcdn.com',
+  'minecraft.net', 'minecraft-services.net', 'mojang.com', 'xbox.com', 'xboxlive.com', 'playstation.com', 'store.playstation.com',
+  'playstation.net', 'sonyentertainmentnetwork.com', 'nintendo.com', 'nintendo.net',
+  'twitch.tv', 'kick.com', 'poki.com', 'crazygames.com', 'kongregate.com', 'miniclip.com', 'itch.io',
+  'newgrounds.com', 'armorgames.com', 'y8.com', 'coolmathgames.com', 'addictinggames.com', 'gamesgames.com', 'gameflare.com'
+];
 
 for (let index = 0; index <= 50; index += 1) {
   const tick = document.createElement('i');
@@ -245,6 +256,26 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
+async function togglePcActivity(button, ip, panel, local) {
+  const expanded = button.getAttribute('aria-expanded') === 'true';
+  button.setAttribute('aria-expanded', String(!expanded));
+  button.textContent = expanded ? 'View activity' : 'Hide activity';
+  panel.classList.toggle('hidden', expanded);
+  if (expanded) return;
+  panel.textContent = 'Loading process activity...';
+  try {
+    const result = local
+      ? await window.api.getPcStatus()
+      : await window.api.remoteCommand(`${ip}:47821`, agentSessionPassword(), 'get-pc-activity', null, 'operator');
+    const processes = Array.isArray(result) ? result : result.processes || [];
+    panel.innerHTML = processes.length
+      ? processes.map((process) => `<div class="pc-process-row"><span><strong>${escapeHtml(process.ProcessName || 'Process')}</strong><small>PID ${escapeHtml(process.Id)} · CPU ${Number(process.CPU || 0).toFixed(1)}s</small></span><span>${formatPcBytes(process.WorkingSet64)} RAM</span></div>`).join('')
+      : '<span class="field-note">No process data available.</span>';
+  } catch (error) {
+    panel.textContent = error.message || 'Could not load process activity.';
+  }
+}
+
 function renderDevices(devices) {
   discoveredDevices = devices;
   renderDashboardDevices(devices);
@@ -256,8 +287,11 @@ function renderDevices(devices) {
   deviceList.innerHTML = devices.map((device) => {
     const displayName = device.nameAvailable ? escapeHtml(device.name) : 'Name unavailable';
     const nameNote = device.nameAvailable ? 'PC name' : 'Enable Network Discovery on this PC';
-    return `<div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span></div>`;
+    return `<div class="device-list-entry"><div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><button type="button" data-device-activity="${escapeHtml(device.ip)}" data-local-device="${device.local === true}" aria-expanded="false">View activity</button></div><div class="device-activity hidden" role="status"><span class="field-note">Open to load process activity.</span></div></div>`;
   }).join('');
+  deviceList.querySelectorAll('[data-device-activity]').forEach((button) => button.addEventListener('click', () => {
+    togglePcActivity(button, button.dataset.deviceActivity, button.closest('.device-list-entry').querySelector('.device-activity'), button.dataset.localDevice === 'true');
+  }));
 }
 
 function renderDashboardDevices(devices) {
@@ -372,7 +406,11 @@ function renderSavedPcCards() {
     savedPcCards.innerHTML = '<div class="empty-devices">This group has no devices yet. Go to Network to scan and add devices.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`).join('');
+  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-activity="${escapeHtml(device.ip)}" aria-expanded="false">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div><section class="saved-card-activity hidden" aria-label="Recent process activity"><span class="field-note">Open to load process activity.</span></section></article>`).join('');
+  savedPcCards.querySelectorAll('[data-card-activity]').forEach((button) => button.addEventListener('click', () => {
+    const device = savedDevices().find((item) => item.ip === button.dataset.cardActivity);
+    togglePcActivity(button, button.dataset.cardActivity, button.closest('.saved-pc-card').querySelector('.saved-card-activity'), Boolean(device && isCurrentDevice(device)));
+  }));
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-apps]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardApps, 'update-apps')));
   savedPcCards.querySelectorAll('[data-card-lock]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardLock, 'start-lock')));
@@ -1128,13 +1166,25 @@ appsInput.addEventListener('input', updateCounts);
 gamingMode.addEventListener('change', async () => {
   await requireAuthentication();
   const apps = appsInput.value.split('\n').map((item) => item.trim()).filter(Boolean);
-  const updatedApps = gamingMode.checked
+  const sites = sitesInput.value.split('\n').map((item) => item.trim()).filter(Boolean);
+  const enabled = gamingMode.checked;
+  const updatedApps = enabled
     ? [...new Set([...apps, ...gamingApps])]
     : apps.filter((app) => !gamingApps.includes(app.toLowerCase()));
-  appsInput.value = updatedApps.join('\n');
-  await window.api.updateApps(updatedApps);
-  updateCounts();
-  showToast(gamingMode.checked ? 'Gaming apps are now blocked' : 'Gaming app blocking disabled');
+  const updatedSites = enabled
+    ? [...new Set([...sites, ...gamingSites])]
+    : sites.filter((site) => !gamingSites.includes(site.toLowerCase().replace(/^www\./, '')));
+  try {
+    await window.api.updateSites(updatedSites);
+    await window.api.updateApps(updatedApps);
+    sitesInput.value = updatedSites.join('\n');
+    appsInput.value = updatedApps.join('\n');
+    updateCounts();
+    showToast(enabled ? 'Gaming apps and popular gaming sites are now blocked' : 'Gaming app and site blocking disabled');
+  } catch (error) {
+    gamingMode.checked = !enabled;
+    showToast(error.message || 'Could not update gaming blocks');
+  }
 });
 hotspotSharingDisabled?.addEventListener('change', async () => {
   const requestedState = hotspotSharingDisabled.checked;

@@ -191,7 +191,7 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, getPcActivity, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
@@ -271,6 +271,7 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       else if (body.command === 'merge-network-group') result = mergeNetworkGroup(body.payload || {});
       else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
       else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };
+      else if (body.command === 'get-pc-activity') result = getPcActivity ? getPcActivity() : [];
       else {
         sendJson(response, 400, { error: 'Unknown command' });
         return;
