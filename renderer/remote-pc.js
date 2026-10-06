@@ -153,6 +153,23 @@ usbStorageToggle.addEventListener('change', async () => {
     usbStorageToggle.disabled = false;
   }
 });
+document.getElementById('lock-workstation').addEventListener('click', async () => {
+  try {
+    await command('lock-workstation', null, 'admin');
+    showMessage(`Windows lock sent to ${remoteName}.`);
+  } catch (error) {
+    showMessage(error.message || 'Could not lock this PC.', true);
+  }
+});
+document.getElementById('restart-pc').addEventListener('click', async () => {
+  if (!window.confirm(`Restart ${remoteName}? Save your work first.`)) return;
+  try {
+    await command('restart', null, 'admin');
+    showMessage(`Restart scheduled for ${remoteName}.`);
+  } catch (error) {
+    showMessage(error.message || 'Could not restart this PC.', true);
+  }
+});
 document.getElementById('shutdown').addEventListener('click', async () => {
   if (!window.confirm(`Shut down ${remoteName}? Unsaved work may be lost.`)) return;
   try {

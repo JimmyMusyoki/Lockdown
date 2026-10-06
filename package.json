@@ -33,6 +33,7 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true

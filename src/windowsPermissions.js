@@ -19,7 +19,7 @@ async function ensurePrivateNetworkAccess(port) {
     'advfirewall', 'firewall', 'add', 'rule',
     `name=${FIREWALL_RULE_NAME}`,
     'dir=in', 'action=allow', 'protocol=TCP', `localport=${port}`,
-    'profile=any', 'remoteip=localsubnet', 'enable=yes'
+    'profile=private', 'remoteip=localsubnet', 'enable=yes'
   ]);
   return { supported: true, created: true };
 }

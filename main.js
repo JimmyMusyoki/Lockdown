@@ -713,6 +713,13 @@ app.whenReady().then(() => {
         setUsbStorageBlocked,
         startWindowsUpdateInstall,
         getWindowsUpdateInstallStatus,
+        scheduleRestart: () => {
+          const result = spawnSync('shutdown.exe', ['/r', '/t', '10'], { windowsHide: true });
+          if (result.error) throw result.error;
+          if (result.status !== 0) throw new Error('Windows could not schedule a restart.');
+          return { scheduled: true, delaySeconds: 10 };
+        },
+        scheduleWorkstationLock: lockWorkstation,
         startLock,
         getActivity,
         mergeNetworkGroup,
@@ -912,6 +919,17 @@ function setUsbStorageBlocked(blocked) {
   return { blocked: actualBlocked, requiresReconnect: true, message: 'Disconnect and reconnect USB drives for the change to take effect.' };
 }
 
+function lockWorkstation() {
+  if (process.platform !== 'win32') throw new Error('Workstation locking is available on Windows only.');
+  return new Promise((resolve, reject) => {
+    const executable = path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'rundll32.exe');
+    execFile(executable, ['user32.dll,LockWorkStation'], { windowsHide: true }, (error) => {
+      if (error) reject(error);
+      else resolve({ locked: true });
+    });
+  });
+}
+
 function resolvePcFile(relativePath = '') {
   if (!pcFileRoot) throw new Error('Choose a folder before browsing files.');
   const target = path.resolve(pcFileRoot, String(relativePath));
@@ -1017,21 +1035,25 @@ ipcMain.handle('delete-pc-file', async (_event, relativePath) => {
   return true;
 });
 
-ipcMain.handle('restart-pc', async () => {
+ipcMain.handle('restart-pc', async (_evt, confirmed = false) => {
   if (process.platform !== 'win32') throw new Error('Restart is available on Windows only.');
-  const confirmation = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    buttons: ['Restart PC', 'Cancel'],
-    defaultId: 1,
-    cancelId: 1,
-    title: 'Restart this PC?',
-    message: 'Windows will restart now.',
-    detail: 'Save your work before continuing.'
-  });
-  if (confirmation.response !== 0) return false;
+  if (!confirmed) {
+    const confirmation = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Restart PC', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Restart this PC?',
+      message: 'Windows will restart now.',
+      detail: 'Save your work before continuing.'
+    });
+    if (confirmation.response !== 0) return false;
+  }
   spawnSync('shutdown.exe', ['/r', '/t', '0'], { windowsHide: true });
   return true;
 });
+
+ipcMain.handle('lock-workstation', () => lockWorkstation());
 
 ipcMain.handle('get-data', () => store.load());
 

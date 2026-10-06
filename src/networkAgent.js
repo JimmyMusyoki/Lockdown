@@ -191,7 +191,33 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, getPcActivity, getPcAttention, getUsbStorageBlocked, setUsbStorageBlocked, startWindowsUpdateInstall, getWindowsUpdateInstallStatus, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
+function runRestart() {
+  return new Promise((resolve, reject) => {
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const restartPath = path.join(systemRoot, 'System32', 'shutdown.exe');
+    execFile(restartPath, ['/r', '/t', '10'], { windowsHide: true }, (error, stdout, stderr) => {
+      if (!error) {
+        resolve({ scheduled: true, delaySeconds: 10 });
+        return;
+      }
+      const detail = String(stderr || stdout || error.message || '').trim();
+      reject(new Error(detail || `Windows restart failed with code ${error.code || 'unknown'}.`));
+    });
+  });
+}
+
+function runWorkstationLock() {
+  return new Promise((resolve, reject) => {
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const lockPath = path.join(systemRoot, 'System32', 'rundll32.exe');
+    execFile(lockPath, ['user32.dll,LockWorkStation'], { windowsHide: true }, (error) => {
+      if (error) reject(error);
+      else resolve({ locked: true });
+    });
+  });
+}
+
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, getPcActivity, getPcAttention, getUsbStorageBlocked, setUsbStorageBlocked, startWindowsUpdateInstall, getWindowsUpdateInstallStatus, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, scheduleRestart, scheduleWorkstationLock, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
@@ -247,6 +273,41 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
             const shutdown = scheduleShutdown || (() => runShutdown());
             Promise.resolve(shutdown()).catch((error) => {
               if (recordActivity) recordActivity(`Shutdown failed: ${error.message}`);
+            });
+          }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
+        });
+        return;
+      }
+
+      if (body.command === 'restart') {
+        if (body.role !== 'admin') {
+          sendJson(response, 403, { error: 'Administrator role is required to restart this PC.' });
+          return;
+        }
+        if (stopScreenView) stopScreenView();
+        sendJson(response, 202, { ok: true, data: { scheduled: true, delaySeconds: 10 } });
+        response.once('finish', () => {
+          setTimeout(() => {
+            const restart = scheduleRestart || (() => runRestart());
+            Promise.resolve(restart()).catch((error) => {
+              if (recordActivity) recordActivity(`Restart failed: ${error.message}`);
+            });
+          }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
+        });
+        return;
+      }
+
+      if (body.command === 'lock-workstation') {
+        if (body.role !== 'admin') {
+          sendJson(response, 403, { error: 'Administrator role is required to lock this PC.' });
+          return;
+        }
+        sendJson(response, 202, { ok: true, data: { scheduled: true } });
+        response.once('finish', () => {
+          setTimeout(() => {
+            const lock = scheduleWorkstationLock || (() => runWorkstationLock());
+            Promise.resolve(lock()).catch((error) => {
+              if (recordActivity) recordActivity(`Workstation lock failed: ${error.message}`);
             });
           }, SHUTDOWN_RESPONSE_DELAY_MS).unref();
         });

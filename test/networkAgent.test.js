@@ -68,6 +68,8 @@ test('remote PC activity command returns the agent process snapshot', async () =
       },
       startWindowsUpdateInstall: () => ({ jobId: 'update-job-1', status: 'running' }),
       getWindowsUpdateInstallStatus: (jobId) => ({ jobId, status: 'complete', message: '2 updates installed.' }),
+      scheduleRestart: () => ({ scheduled: true, delaySeconds: 10 }),
+      scheduleWorkstationLock: () => ({ locked: true }),
       certificateDirectory: path.join(temporaryDirectory, 'certificates'),
       port
     });
@@ -186,6 +188,51 @@ test('remote PC activity command returns the agent process snapshot', async () =
     assert.equal(usbBlockResponse.status, 200);
     assert.deepEqual(JSON.parse(usbBlockResponse.body.toString()).data, { blocked: true, requiresReconnect: true });
     assert.equal(usbStorageBlocked, true);
+
+    const restartNonce = await getChallenge(port);
+    const restartResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: restartNonce,
+        timestamp: Date.now(),
+        requestId: 'restart-pc-request-12345678',
+        command: 'restart',
+        payload: null,
+        role: 'admin'
+      })
+    });
+    assert.equal(restartResponse.status, 202);
+
+    const lockNonce = await getChallenge(port);
+    const lockResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: lockNonce,
+        timestamp: Date.now(),
+        requestId: 'workstation-lock-request-123456',
+        command: 'lock-workstation',
+        payload: null,
+        role: 'admin'
+      })
+    });
+    assert.equal(lockResponse.status, 202);
+
+    const unauthorizedLockNonce = await getChallenge(port);
+    const unauthorizedLockResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: unauthorizedLockNonce,
+        timestamp: Date.now(),
+        requestId: 'workstation-lock-operator-123456',
+        command: 'lock-workstation',
+        payload: null,
+        role: 'operator'
+      })
+    });
+    assert.equal(unauthorizedLockResponse.status, 403);
   } finally {
     stopNetworkAgent();
     await fs.rm(temporaryDirectory, { recursive: true, force: true });
