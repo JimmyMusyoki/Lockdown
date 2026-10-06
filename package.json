@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
+    "lucide-static": "^1.52.0",
     "node-schedule": "^2.1.1",
     "ps-list": "^8.1.1",
     "selfsigned": "^5.5.0"

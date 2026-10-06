@@ -191,7 +191,7 @@ function runShutdown() {
   });
 }
 
-async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, getPcActivity, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
+async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updateApps, getPcActivity, getPcAttention, startWindowsUpdateInstall, getWindowsUpdateInstallStatus, startLock, getActivity, mergeNetworkGroup, recordActivity, requestScreenView, captureScreenFrame, stopScreenView, sharedFilesDirectory, scheduleShutdown, certificateDirectory, port = DEFAULT_PORT } = {}) {
   stopNetworkAgent();
   const certificate = await loadCertificate(certificateDirectory);
   server = https.createServer(certificate, async (request, response) => {
@@ -272,6 +272,9 @@ async function startNetworkAgent({ getData, getNetworkGroups, updateSites, updat
       else if (body.command === 'get-status') result = { online: true, hostname: os.hostname(), platform: process.platform, lock: publicLock(getData().lock) };
       else if (body.command === 'get-activity') result = { hostname: os.hostname(), entries: getActivity ? getActivity() : [] };
       else if (body.command === 'get-pc-activity') result = getPcActivity ? getPcActivity() : [];
+      else if (body.command === 'get-pc-attention') result = getPcAttention ? await getPcAttention() : null;
+      else if (body.command === 'install-windows-updates' && body.role === 'admin') result = startWindowsUpdateInstall ? startWindowsUpdateInstall() : { status: 'unsupported' };
+      else if (body.command === 'get-windows-update-install-status' && body.role === 'admin') result = getWindowsUpdateInstallStatus ? getWindowsUpdateInstallStatus(body.payload?.jobId) : { status: 'unsupported' };
       else {
         sendJson(response, 400, { error: 'Unknown command' });
         return;

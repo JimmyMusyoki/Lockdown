@@ -47,11 +47,20 @@ test('remote PC activity command returns the agent process snapshot', async () =
   const { port } = portReservation.address();
   await new Promise((resolve) => portReservation.close(resolve));
   const processes = [{ ProcessName: 'study-app', Id: 42, CPU: 12.5, WorkingSet64: 4096 }];
+  const attention = {
+    hostname: 'study-pc',
+    uptime: 30 * 24 * 60 * 60,
+    disks: [{ DeviceID: 'C:', Size: 1000, FreeSpace: 50 }],
+    updateStatus: { status: 'available', availableVersion: '1.2.0' }
+  };
 
   try {
     await startNetworkAgent({
       getData: () => ({ blockedSites: [], blockedApps: [], lock: null }),
       getPcActivity: () => processes,
+      getPcAttention: () => attention,
+      startWindowsUpdateInstall: () => ({ jobId: 'update-job-1', status: 'running' }),
+      getWindowsUpdateInstallStatus: (jobId) => ({ jobId, status: 'complete', message: '2 updates installed.' }),
       certificateDirectory: path.join(temporaryDirectory, 'certificates'),
       port
     });
@@ -72,6 +81,71 @@ test('remote PC activity command returns the agent process snapshot', async () =
 
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(response.body.toString()).data, processes);
+
+    const attentionNonce = await getChallenge(port);
+    const attentionResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: attentionNonce,
+        timestamp: Date.now(),
+        requestId: 'pc-attention-request-123456',
+        command: 'get-pc-attention',
+        payload: null,
+        role: 'operator'
+      })
+    });
+    assert.equal(attentionResponse.status, 200);
+    assert.deepEqual(JSON.parse(attentionResponse.body.toString()).data, attention);
+
+    const updateNonce = await getChallenge(port);
+    const updateResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: updateNonce,
+        timestamp: Date.now(),
+        requestId: 'windows-update-start-123456',
+        command: 'install-windows-updates',
+        payload: null,
+        role: 'admin'
+      })
+    });
+    assert.equal(updateResponse.status, 200);
+    assert.deepEqual(JSON.parse(updateResponse.body.toString()).data, { jobId: 'update-job-1', status: 'running' });
+
+    const statusNonce = await getChallenge(port);
+    const statusResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: statusNonce,
+        timestamp: Date.now(),
+        requestId: 'windows-update-status-123456',
+        command: 'get-windows-update-install-status',
+        payload: { jobId: 'update-job-1' },
+        role: 'admin'
+      })
+    });
+    assert.equal(statusResponse.status, 200);
+    assert.deepEqual(JSON.parse(statusResponse.body.toString()).data, {
+      jobId: 'update-job-1', status: 'complete', message: '2 updates installed.'
+    });
+
+    const unauthorizedNonce = await getChallenge(port);
+    const unauthorizedResponse = await requestAgent(port, '/command', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        nonce: unauthorizedNonce,
+        timestamp: Date.now(),
+        requestId: 'windows-update-operator-123456',
+        command: 'install-windows-updates',
+        payload: null,
+        role: 'operator'
+      })
+    });
+    assert.equal(unauthorizedResponse.status, 400);
   } finally {
     stopNetworkAgent();
     await fs.rm(temporaryDirectory, { recursive: true, force: true });

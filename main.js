@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, screen, dialog, desktopCapturer, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawnSync } = require('child_process');
+const { execFile, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -27,6 +27,7 @@ const usesBootAgent = process.platform === 'win32' && app.isPackaged;
 let mainWindow;
 let speedWindow;
 let screenViewerWindow;
+const remotePcWindows = new Map();
 let fileSharingWindow;
 let screenViewerHost;
 let remoteScreenSessionId;
@@ -41,6 +42,11 @@ let automaticUpdates = true;
 let pcFileRoot = null;
 const certificatePins = new Map();
 const REMOTE_REQUEST_TIMEOUT_MS = 8000;
+const WINDOWS_UPDATE_SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const windowsUpdateJobs = new Map();
+let windowsUpdateScanAt = 0;
+let windowsUpdateScanRunning = false;
+let windowsUpdateSnapshot = { status: 'checking', count: 0, titles: [], checkedAt: null };
 // The SYSTEM boot agent must not claim the interactive user's single-instance
 // lock; otherwise the administrator console could be prevented from opening.
 const hasSingleInstanceLock = isBackgroundAgent || app.requestSingleInstanceLock();
@@ -441,6 +447,33 @@ function createFileSharingWindow(destinations, availableDestinations, sources, n
   fileSharingWindow.on('closed', () => { fileSharingWindow = null; });
 }
 
+function createRemotePcWindow(host, name) {
+  const address = validateRemoteHost(host);
+  const existing = remotePcWindows.get(address);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    return;
+  }
+
+  const remoteWindow = new BrowserWindow({
+    width: 900,
+    height: 760,
+    minWidth: 680,
+    minHeight: 560,
+    title: `Remote PC · ${name}`,
+    icon: appIcon,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  remotePcWindows.set(address, remoteWindow);
+  remoteWindow.loadFile(path.join(__dirname, 'renderer', 'remote-pc.html'), { query: { host: address, name } });
+  remoteWindow.on('closed', () => remotePcWindows.delete(address));
+}
+
 async function authorizeScreenView(address) {
   if (isBackgroundAgent) throw new Error('Screen viewing requires an active desktop session.');
   if (remoteScreenSession && Date.now() < remoteScreenSession.expiresAt) {
@@ -648,6 +681,7 @@ app.whenReady().then(() => {
     createWindow();
     configureAutoUpdates();
     createTray();
+    refreshWindowsUpdateSnapshot();
   }
   startWatchdog();
   startScheduleWatcher();
@@ -674,6 +708,9 @@ app.whenReady().then(() => {
         updateSites,
         updateApps,
         getPcActivity,
+        getPcAttention,
+        startWindowsUpdateInstall,
+        getWindowsUpdateInstallStatus,
         startLock,
         getActivity,
         mergeNetworkGroup,
@@ -720,6 +757,90 @@ function runPowerShellJson(command) {
   return output ? JSON.parse(output) : [];
 }
 
+function refreshWindowsUpdateSnapshot() {
+  if (process.platform !== 'win32' || windowsUpdateScanRunning || Date.now() - windowsUpdateScanAt < WINDOWS_UPDATE_SCAN_INTERVAL_MS) return;
+  windowsUpdateScanRunning = true;
+  windowsUpdateScanAt = Date.now();
+  const command = "$session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $result = $searcher.Search('IsInstalled=0 and IsHidden=0'); $titles = @(); for ($i = 0; $i -lt $result.Updates.Count; $i++) { $titles += $result.Updates.Item($i).Title }; [pscustomobject]@{ count = $result.Updates.Count; titles = $titles } | ConvertTo-Json -Compress";
+  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+    windowsHide: true,
+    timeout: 120000,
+    maxBuffer: 1024 * 1024
+  }, (error, stdout) => {
+    windowsUpdateScanRunning = false;
+    const checkedAt = Date.now();
+    if (error) {
+      windowsUpdateSnapshot = { status: 'error', count: 0, titles: [], checkedAt, message: 'Windows Update scan failed.' };
+    } else {
+      try {
+        const result = JSON.parse(stdout.trim() || '{}');
+        const titles = Array.isArray(result.titles) ? result.titles : result.titles ? [result.titles] : [];
+        const count = Number(result.count) || 0;
+        windowsUpdateSnapshot = { status: count ? 'available' : 'current', count, titles, checkedAt };
+      } catch (_) {
+        windowsUpdateSnapshot = { status: 'error', count: 0, titles: [], checkedAt, message: 'Windows Update scan returned invalid data.' };
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('windows-update-status', windowsUpdateSnapshot);
+  });
+}
+
+function startWindowsUpdateInstall() {
+  if (process.platform !== 'win32') throw new Error('Windows Update installation requires Windows.');
+  const runningJob = [...windowsUpdateJobs.values()].find((job) => job.status === 'running');
+  if (runningJob) return { jobId: runningJob.jobId, status: runningJob.status, message: runningJob.message };
+
+  const jobId = crypto.randomUUID();
+  const job = { jobId, status: 'running', message: 'Searching for Windows updates...', startedAt: Date.now() };
+  windowsUpdateJobs.set(jobId, job);
+  if (windowsUpdateJobs.size > 20) windowsUpdateJobs.delete(windowsUpdateJobs.keys().next().value);
+
+  const script = "$ErrorActionPreference='Stop'; $session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); $search=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Software'\"); $updates=New-Object -ComObject Microsoft.Update.UpdateColl; for($i=0; $i -lt $search.Updates.Count; $i++){ $item=$search.Updates.Item($i); if(-not $item.EulaAccepted){ $null=$item.AcceptEula() }; $null=$updates.Add($item) }; if($updates.Count -eq 0){ [pscustomobject]@{ found=0; installedCount=0; resultCode=2; rebootRequired=$false } | ConvertTo-Json -Compress; exit 0 }; $downloader=$session.CreateUpdateDownloader(); $downloader.Updates=$updates; $downloadResult=$downloader.Download(); $installable=New-Object -ComObject Microsoft.Update.UpdateColl; for($i=0; $i -lt $updates.Count; $i++){ if($updates.Item($i).IsDownloaded){ $null=$installable.Add($updates.Item($i)) } }; if($installable.Count -eq 0){ throw 'Windows could not download any available updates.' }; $installer=$session.CreateUpdateInstaller(); $installer.Updates=$installable; $installResult=$installer.Install(); [pscustomobject]@{ found=$updates.Count; installedCount=$installable.Count; resultCode=$installResult.ResultCode; rebootRequired=$installResult.RebootRequired } | ConvertTo-Json -Compress";
+  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    windowsHide: true,
+    timeout: 60 * 60 * 1000,
+    maxBuffer: 1024 * 1024
+  }, (error, stdout) => {
+    job.finishedAt = Date.now();
+    if (error) {
+      job.status = 'error';
+      job.message = error.message || 'Windows Update installation failed.';
+      return;
+    }
+    try {
+      const result = JSON.parse(stdout.trim() || '{}');
+      if (!result.found) {
+        job.status = 'complete';
+        job.message = 'Windows is up to date.';
+      } else if (![2, 3].includes(Number(result.resultCode))) {
+        job.status = 'error';
+        job.message = `Windows Update finished with result code ${result.resultCode}.`;
+      } else {
+        job.status = 'complete';
+        const installedCount = Number(result.installedCount) || 0;
+        const partial = Number(result.resultCode) === 3 ? ' Some updates reported errors.' : '';
+        job.message = `${installedCount} of ${result.found} update${result.found === 1 ? '' : 's'} installed.${partial}${result.rebootRequired ? ' Restart required.' : ''}`;
+      }
+      job.rebootRequired = result.rebootRequired === true;
+    } catch (_) {
+      job.status = 'error';
+      job.message = 'Windows Update returned an invalid result.';
+    }
+    if (job.status === 'complete') {
+      windowsUpdateScanAt = 0;
+      refreshWindowsUpdateSnapshot();
+    }
+  });
+  return { jobId, status: job.status, message: job.message };
+}
+
+function getWindowsUpdateInstallStatus(jobId) {
+  if (typeof jobId !== 'string') throw new TypeError('A Windows Update job ID is required.');
+  const job = windowsUpdateJobs.get(jobId);
+  if (!job) throw new Error('Windows Update job not found.');
+  return { ...job };
+}
+
 function getCpuUsage(before, after) {
   const previous = before.reduce((total, cpu) => total + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
   const current = after.reduce((total, cpu) => total + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq, 0);
@@ -733,6 +854,23 @@ function getPcActivity() {
   return Array.isArray(processes) ? processes : processes ? [processes] : [];
 }
 
+function getPcAttention() {
+  refreshWindowsUpdateSnapshot();
+  const disks = runPowerShellJson("Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress");
+  return {
+    hostname: os.hostname(),
+    uptime: os.uptime(),
+    disks: Array.isArray(disks) ? disks : disks ? [disks] : [],
+    updateStatus: {
+      status: updateState.status,
+      availableVersion: updateState.availableVersion,
+      message: updateState.message
+    },
+    windowsUpdate: windowsUpdateSnapshot,
+    sampledAt: Date.now()
+  };
+}
+
 function resolvePcFile(relativePath = '') {
   if (!pcFileRoot) throw new Error('Choose a folder before browsing files.');
   const target = path.resolve(pcFileRoot, String(relativePath));
@@ -743,6 +881,7 @@ function resolvePcFile(relativePath = '') {
 }
 
 ipcMain.handle('get-pc-status', async () => {
+  refreshWindowsUpdateSnapshot();
   const before = os.cpus();
   await new Promise((resolve) => setTimeout(resolve, 250));
   const after = os.cpus();
@@ -756,6 +895,7 @@ ipcMain.handle('get-pc-status', async () => {
     memoryTotal: os.totalmem(),
     memoryFree: os.freemem(),
     uptime: os.uptime(),
+    windowsUpdate: windowsUpdateSnapshot,
     network: interfaces[0]?.address || null,
     networkCount: interfaces.length,
     disks: Array.isArray(disks) ? disks : disks ? [disks] : [],
@@ -775,10 +915,8 @@ ipcMain.handle('open-app-uninstaller', async () => {
   return true;
 });
 
-ipcMain.handle('open-windows-update', async () => {
-  await shell.openExternal('ms-settings:windowsupdate');
-  return true;
-});
+ipcMain.handle('install-windows-updates', () => startWindowsUpdateInstall());
+ipcMain.handle('get-windows-update-install-status', (_evt, jobId) => getWindowsUpdateInstallStatus(jobId));
 
 ipcMain.handle('select-pc-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
@@ -1009,6 +1147,12 @@ ipcMain.handle('remote-command', async (_evt, { host, password, command, payload
 ipcMain.handle('open-screen-view', (_evt, { host, name }) => {
   const address = validateRemoteHost(host);
   createScreenViewer(address, String(name || address).slice(0, 80));
+  return true;
+});
+
+ipcMain.handle('open-remote-pc-window', (_evt, { host, name }) => {
+  const address = validateRemoteHost(host);
+  createRemotePcWindow(address, String(name || address).slice(0, 80));
   return true;
 });
 

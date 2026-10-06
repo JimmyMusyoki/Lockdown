@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote PC</title>
+  <link rel="stylesheet" href="remote-pc.css">
+</head>
+<body>
+  <div class="remote-shell">
+    <header class="remote-header">
+      <div>
+        <span class="eyebrow">REMOTE DEVICE</span>
+        <h1 id="remote-name">Remote PC</h1>
+        <p id="remote-host" class="muted"></p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh-remote" class="button secondary" type="button">Refresh</button>
+        <button id="view-screen" class="button secondary" type="button">View screen</button>
+        <button id="open-files" class="button secondary" type="button">File sharing</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="activity-section">
+        <div class="section-heading">
+          <div><span class="eyebrow">LIVE SNAPSHOT</span><h2>Recent process activity</h2></div>
+          <span id="activity-updated" class="muted">Waiting for device</span>
+        </div>
+        <div id="process-list" class="process-list" aria-live="polite"><p class="muted">Loading process activity...</p></div>
+      </section>
+
+      <div class="task-grid">
+        <section class="task-section">
+          <div class="section-heading"><div><span class="eyebrow">REMOTE RULES</span><h2>Website blocks</h2></div></div>
+          <p class="muted">One domain per line. Saving replaces this PC's website block list.</p>
+          <textarea id="blocked-sites" rows="6" spellcheck="false" aria-label="Blocked websites"></textarea>
+          <button id="save-sites" class="button primary" type="button">Save website rules</button>
+        </section>
+        <section class="task-section">
+          <div class="section-heading"><div><span class="eyebrow">REMOTE RULES</span><h2>Application blocks</h2></div></div>
+          <p class="muted">Use process names such as <code>game.exe</code>.</p>
+          <textarea id="blocked-apps" rows="6" spellcheck="false" aria-label="Blocked applications"></textarea>
+          <button id="save-apps" class="button primary" type="button">Save application rules</button>
+        </section>
+      </div>
+
+      <section class="windows-update-section">
+        <div><span class="eyebrow">SYSTEM MAINTENANCE</span><h2>Windows Update</h2><p id="windows-update-status" class="muted">Search, download, and install available updates on this PC.</p></div>
+        <button id="install-windows-updates" class="button primary" type="button">Install Windows updates</button>
+      </section>
+
+      <section class="lock-section">
+        <div><span class="eyebrow">FOCUS</span><h2>Start a lock</h2><p id="lock-status" class="muted">Lock status unavailable</p></div>
+        <label>Minutes<input id="lock-minutes" type="number" min="1" max="1440" value="60"></label>
+        <button id="start-lock" class="button primary" type="button">Start focus lock</button>
+        <button id="shutdown" class="button danger" type="button">Shut down PC</button>
+      </section>
+      <p id="remote-message" class="message" role="status" aria-live="polite"></p>
+    </main>
+  </div>
+  <script src="remote-pc.js"></script>
+</body>
+</html>

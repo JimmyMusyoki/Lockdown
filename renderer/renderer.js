@@ -21,6 +21,8 @@ const appsCount = document.getElementById('apps-count');
 const protectionState = document.getElementById('protection-state');
 const protectionDetail = document.getElementById('protection-detail');
 const toast = document.getElementById('toast');
+const appShell = document.querySelector('.app-shell');
+const sidebarToggle = document.getElementById('sidebar-toggle');
 const updateStatus = document.getElementById('update-status');
 const lastUpdateCheck = document.getElementById('last-update-check');
 const automaticUpdates = document.getElementById('automatic-updates');
@@ -117,6 +119,7 @@ const alertsList = document.getElementById('alerts-list');
 const alertCount = document.getElementById('alert-count');
 const pcUpdateAction = document.getElementById('pc-update-action');
 let pcStatusSnapshot = null;
+const remotePcAttention = new Map();
 let installedAppsSnapshot = [];
 let pcCurrentRelativePath = '';
 let pcSelectedRoot = '';
@@ -256,23 +259,11 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
-async function togglePcActivity(button, ip, panel, local) {
-  const expanded = button.getAttribute('aria-expanded') === 'true';
-  button.setAttribute('aria-expanded', String(!expanded));
-  button.textContent = expanded ? 'View activity' : 'Hide activity';
-  panel.classList.toggle('hidden', expanded);
-  if (expanded) return;
-  panel.textContent = 'Loading process activity...';
+async function openRemotePcActivity(ip, name) {
   try {
-    const result = local
-      ? await window.api.getPcStatus()
-      : await window.api.remoteCommand(`${ip}:47821`, agentSessionPassword(), 'get-pc-activity', null, 'operator');
-    const processes = Array.isArray(result) ? result : result.processes || [];
-    panel.innerHTML = processes.length
-      ? processes.map((process) => `<div class="pc-process-row"><span><strong>${escapeHtml(process.ProcessName || 'Process')}</strong><small>PID ${escapeHtml(process.Id)} · CPU ${Number(process.CPU || 0).toFixed(1)}s</small></span><span>${formatPcBytes(process.WorkingSet64)} RAM</span></div>`).join('')
-      : '<span class="field-note">No process data available.</span>';
+    await window.api.openRemotePcWindow(`${ip}:47821`, name || ip);
   } catch (error) {
-    panel.textContent = error.message || 'Could not load process activity.';
+    showToast(error.message || 'Could not open this PC window.');
   }
 }
 
@@ -287,10 +278,11 @@ function renderDevices(devices) {
   deviceList.innerHTML = devices.map((device) => {
     const displayName = device.nameAvailable ? escapeHtml(device.name) : 'Name unavailable';
     const nameNote = device.nameAvailable ? 'PC name' : 'Enable Network Discovery on this PC';
-    return `<div class="device-list-entry"><div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><button type="button" data-device-activity="${escapeHtml(device.ip)}" data-local-device="${device.local === true}" aria-expanded="false">View activity</button></div><div class="device-activity hidden" role="status"><span class="field-note">Open to load process activity.</span></div></div>`;
+    return `<div class="device-list-entry"><div class="device-row ${device.online === false ? 'offline-device' : ''}"><input type="checkbox" data-device-ip="${escapeHtml(device.ip)}"><span class="device-state ${device.online !== false ? 'local' : ''}"></span><span class="device-details"><strong>${displayName}<em>${nameNote} · ${escapeHtml(device.type || 'unknown')} · ${device.online === false ? 'Offline' : 'Online'}</em></strong><small>IP ${escapeHtml(device.ip)} · MAC ${escapeHtml(device.mac || 'unavailable')}${device.local ? ' · This computer' : ''}</small></span><button type="button" data-device-activity="${escapeHtml(device.ip)}">View activity</button></div></div>`;
   }).join('');
   deviceList.querySelectorAll('[data-device-activity]').forEach((button) => button.addEventListener('click', () => {
-    togglePcActivity(button, button.dataset.deviceActivity, button.closest('.device-list-entry').querySelector('.device-activity'), button.dataset.localDevice === 'true');
+    const device = discoveredDevices.find((item) => item.ip === button.dataset.deviceActivity);
+    openRemotePcActivity(button.dataset.deviceActivity, device?.name || button.dataset.deviceActivity);
   }));
 }
 
@@ -406,10 +398,14 @@ function renderSavedPcCards() {
     savedPcCards.innerHTML = '<div class="empty-devices">This group has no devices yet. Go to Network to scan and add devices.</div>';
     return;
   }
-  savedPcCards.innerHTML = devices.map((device) => `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-activity="${escapeHtml(device.ip)}" aria-expanded="false">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div><section class="saved-card-activity hidden" aria-label="Recent process activity"><span class="field-note">Open to load process activity.</span></section></article>`).join('');
+  savedPcCards.innerHTML = devices.map((device) => {
+    const attention = remotePcAttentionAlerts(device);
+    const description = attention.map((item) => `${item.title}: ${item.detail}`).join('\n');
+    return `<article class="saved-pc-card" data-saved-card="${escapeHtml(device.ip)}"><div class="saved-card-top"><label><input type="checkbox" data-saved-select="${escapeHtml(savedDeviceKey(device))}"${selectedSavedKeys.has(savedDeviceKey(device)) ? ' checked' : ''}> Select PC</label><span class="device-state"></span><span class="saved-card-status">Checking...</span><span class="saved-card-attention ${attention.length ? '' : 'hidden'}" role="img" aria-label="${escapeHtml(description || 'No attention items')}" title="${escapeHtml(description)}"><span class="attention-icon icon-glyph" aria-hidden="true"></span><span>${attention.length}</span></span></div><h3>${escapeHtml(device.name || `Device ${device.ip}`)}</h3><p>${escapeHtml(device.ip)} · ${escapeHtml(device.mac || 'MAC unavailable')} · ${escapeHtml(device.type || 'unknown')}</p><div class="saved-card-groups">${device.groups.map((group) => `<span>${escapeHtml(group)}</span>`).join('')}</div><div class="saved-card-actions"><button data-card-activity="${escapeHtml(device.ip)}">View activity</button><button data-card-sites="${escapeHtml(device.ip)}">Block websites</button><button data-card-apps="${escapeHtml(device.ip)}">Block apps</button><button data-card-lock="${escapeHtml(device.ip)}">Focus lock</button>${isCurrentDevice(device) ? '' : `<button class="danger-button" data-card-shutdown="${escapeHtml(device.ip)}">Shut down</button>`}</div></article>`;
+  }).join('');
   savedPcCards.querySelectorAll('[data-card-activity]').forEach((button) => button.addEventListener('click', () => {
     const device = savedDevices().find((item) => item.ip === button.dataset.cardActivity);
-    togglePcActivity(button, button.dataset.cardActivity, button.closest('.saved-pc-card').querySelector('.saved-card-activity'), Boolean(device && isCurrentDevice(device)));
+    openRemotePcActivity(button.dataset.cardActivity, device?.name || button.dataset.cardActivity);
   }));
   savedPcCards.querySelectorAll('[data-card-sites]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardSites, 'update-sites')));
   savedPcCards.querySelectorAll('[data-card-apps]').forEach((button) => button.addEventListener('click', () => runSavedDeviceTask(button.dataset.cardApps, 'update-apps')));
@@ -470,17 +466,36 @@ function updateSavedSelectionState() {
 async function refreshSavedPcStatuses(devices) {
   await Promise.all(devices.map(async (device) => {
     const card = savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`);
-    if (!card) return;
     const discoveredOnline = discoveredDevices.some((item) => item.online && devicesMatch(item, device));
     try {
       const agentOnline = await window.api.remoteHealth(`${device.ip}:47821`);
-      card.querySelector('.saved-card-status').textContent = agentOnline ? 'Online' : discoveredOnline ? 'Agent unavailable' : 'Offline';
-      card.querySelector('.device-state').classList.toggle('local', agentOnline || discoveredOnline);
+      if (card) {
+        card.querySelector('.saved-card-status').textContent = agentOnline ? 'Online' : discoveredOnline ? 'Agent unavailable' : 'Offline';
+        card.querySelector('.device-state').classList.toggle('local', agentOnline || discoveredOnline);
+      }
+      let health = remotePcAttention.get(device.ip)?.health || null;
+      if (agentOnline) {
+        try {
+          health = await window.api.remoteCommand(`${device.ip}:47821`, agentSessionPassword(), 'get-pc-attention', null, 'operator');
+        } catch (_) {
+          // Older agents remain online; retain their last known attention data.
+        }
+      }
+      remotePcAttention.set(device.ip, { online: agentOnline || discoveredOnline, agentAvailable: agentOnline, health });
     } catch (_) {
-      card.querySelector('.saved-card-status').textContent = discoveredOnline ? 'Agent unavailable' : 'Offline';
-      card.querySelector('.device-state').classList.toggle('local', discoveredOnline);
+      if (card) {
+        card.querySelector('.saved-card-status').textContent = discoveredOnline ? 'Agent unavailable' : 'Offline';
+        card.querySelector('.device-state').classList.toggle('local', discoveredOnline);
+      }
+      remotePcAttention.set(device.ip, {
+        online: discoveredOnline,
+        agentAvailable: false,
+        health: remotePcAttention.get(device.ip)?.health || null
+      });
     }
   }));
+  devices.forEach((device) => updateSavedCardAttention(savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`), device));
+  renderPcAlerts();
 }
 
 async function runSavedDeviceTask(ip, command) {
@@ -964,6 +979,60 @@ function formatPcBytes(value) {
   return `${bytes} B`;
 }
 
+function remotePcAttentionAlerts(device) {
+  const snapshot = remotePcAttention.get(device.ip);
+  const alerts = [];
+  const name = snapshot?.health?.hostname || device.name || device.ip;
+  if (snapshot && !snapshot.online) {
+    alerts.push({ title: `${name} is offline`, detail: 'The saved PC is not reachable on the network.', tone: 'warning' });
+    return alerts;
+  }
+  if (snapshot && snapshot.online && !snapshot.agentAvailable) {
+    alerts.push({ title: `${name} agent unavailable`, detail: 'The PC is online, but remote tools cannot reach its Lockdown agent.', tone: 'warning' });
+  }
+  const health = snapshot?.health;
+  (health?.disks || []).forEach((disk) => {
+    const size = Number(disk.Size || 0);
+    const free = Number(disk.FreeSpace || 0);
+    if (size && free / size < 0.1) {
+      alerts.push({ title: `Low storage on ${name} (${disk.DeviceID || 'drive'})`, detail: `${formatPcBytes(free)} free`, tone: 'warning' });
+    }
+  });
+  if (Number(health?.uptime) >= 30 * 24 * 60 * 60) {
+    const days = Math.floor(health.uptime / (24 * 60 * 60));
+    alerts.push({ title: `${name} has not restarted recently`, detail: `Running for ${days} days`, tone: 'info' });
+  }
+  if (['available', 'downloaded'].includes(health?.updateStatus?.status)) {
+    const version = health.updateStatus.availableVersion;
+    alerts.push({
+      title: `${name}: Lockdown Blocker update available`,
+      detail: version ? `Version ${version} is ready.` : health.updateStatus.message || 'A newer app version is available.',
+      tone: 'info'
+    });
+  }
+  if (health?.windowsUpdate?.status === 'available') {
+    const titles = (health.windowsUpdate.titles || []).slice(0, 2).join(', ');
+    const extraCount = Math.max(0, Number(health.windowsUpdate.count || 0) - 2);
+    alerts.push({
+      title: `${name}: Windows updates available`,
+      detail: titles ? `${titles}${extraCount ? ` and ${extraCount} more` : ''}` : `${health.windowsUpdate.count} update${health.windowsUpdate.count === 1 ? '' : 's'} ready to install.`,
+      tone: 'info'
+    });
+  }
+  return alerts;
+}
+
+function updateSavedCardAttention(card, device) {
+  const badge = card?.querySelector('.saved-card-attention');
+  if (!badge) return;
+  const alerts = remotePcAttentionAlerts(device);
+  const description = alerts.map((item) => `${item.title}: ${item.detail}`).join('\n');
+  badge.classList.toggle('hidden', alerts.length === 0);
+  badge.title = description;
+  badge.setAttribute('aria-label', description || 'No attention items');
+  badge.querySelector('span:last-child').textContent = String(alerts.length);
+}
+
 function renderPcAlerts() {
   if (!alertsList || !alertCount) return;
   const alerts = [];
@@ -971,10 +1040,19 @@ function renderPcAlerts() {
     pcStatusSnapshot.disks.forEach((disk) => {
       const size = Number(disk.Size || 0);
       const free = Number(disk.FreeSpace || 0);
-      if (size && free / size < 0.1) alerts.push({ title: `Low storage on ${disk.DeviceID}`, detail: `${formatPcBytes(free)} remaining`, tone: 'warning' });
+      if (size && free / size < 0.1) alerts.push({ title: `Low storage on This PC (${disk.DeviceID})`, detail: `${formatPcBytes(free)} remaining`, tone: 'warning' });
     });
   }
   if (pcStatusSnapshot?.cpuPercent >= 90) alerts.push({ title: 'High CPU usage', detail: `CPU is at ${pcStatusSnapshot.cpuPercent}%`, tone: 'warning' });
+  if (Number(pcStatusSnapshot?.uptime) >= 30 * 24 * 60 * 60) {
+    const days = Math.floor(pcStatusSnapshot.uptime / (24 * 60 * 60));
+    alerts.push({ title: 'This PC has not restarted recently', detail: `Running for ${days} days`, tone: 'info' });
+  }
+  if (pcStatusSnapshot?.windowsUpdate?.status === 'available') {
+    const count = Number(pcStatusSnapshot.windowsUpdate.count) || 0;
+    alerts.push({ title: 'Windows updates available on This PC', detail: `${count} update${count === 1 ? '' : 's'} ready to install.`, tone: 'info' });
+  }
+  savedDevices().filter((device) => !device.local).forEach((device) => alerts.push(...remotePcAttentionAlerts(device)));
   const updateState = window.__lockdownUpdateState;
   if (updateState?.status === 'available') alerts.push({ title: 'Update available', detail: updateState.message || 'A newer version is ready to download.', tone: 'info' });
   if (updateState?.status === 'downloaded') alerts.push({ title: 'Restart to finish update', detail: 'The update is downloaded and ready to install.', tone: 'info' });
@@ -1220,11 +1298,37 @@ document.getElementById('refresh-installed-apps')?.addEventListener('click', ref
 document.getElementById('installed-app-search')?.addEventListener('input', renderInstalledApps);
 document.getElementById('choose-pc-folder')?.addEventListener('click', choosePcFolder);
 document.getElementById('open-uninstaller')?.addEventListener('click', openWindowsUninstaller);
-document.getElementById('open-windows-update')?.addEventListener('click', async () => {
+document.getElementById('install-windows-updates')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const defaultLabel = 'Install Windows updates';
+  button.disabled = true;
+  button.textContent = 'Starting update...';
+  document.getElementById('pc-update-message').textContent = 'Searching, downloading, and installing available Windows updates...';
   try {
-    await window.api.openWindowsUpdate();
+    const job = await window.api.installWindowsUpdates();
+    const poll = async () => {
+      try {
+        const status = await window.api.getWindowsUpdateInstallStatus(job.jobId);
+        document.getElementById('pc-update-message').textContent = status.message;
+        if (status.status === 'running') {
+          button.textContent = 'Installing...';
+          setTimeout(poll, 2500);
+          return;
+        }
+        button.disabled = false;
+        button.textContent = defaultLabel;
+        showToast(status.message);
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = defaultLabel;
+        document.getElementById('pc-update-message').textContent = error.message || 'Could not read Windows Update status.';
+      }
+    };
+    poll();
   } catch (error) {
-    showToast(error.message || 'Could not open Windows Update.');
+    button.disabled = false;
+    button.textContent = defaultLabel;
+    document.getElementById('pc-update-message').textContent = error.message || 'Could not start Windows Update.';
   }
 });
 document.getElementById('pc-check-updates')?.addEventListener('click', async () => {
@@ -1384,6 +1488,14 @@ updateActionBtn?.addEventListener('click', async () => {
 window.api?.onUpdateStatus?.((state) => {
   if (state.status === 'checking' || state.status === 'current' || state.status === 'available' || state.status === 'error') markUpdateCheck();
   renderUpdateStatus(state);
+  renderPcAlerts();
+});
+window.api?.onWindowsUpdateStatus?.((status) => {
+  if (pcStatusSnapshot) pcStatusSnapshot.windowsUpdate = status;
+  renderPcAlerts();
+  for (const device of savedDevices()) {
+    updateSavedCardAttention(savedPcCards.querySelector(`[data-saved-card="${device.ip}"]`), device);
+  }
 });
 window.api?.onNetworkGroupsUpdated?.(async () => {
   networkGroups = await window.api.getNetworkGroups();
@@ -1395,10 +1507,43 @@ if (themeToggleSidebar) {
     applyTheme(nextTheme);
   });
 }
+function syncSidebarToggle() {
+  const isMobile = window.matchMedia('(max-width: 620px)').matches;
+  const isExpanded = isMobile
+    ? appShell.classList.contains('mobile-nav-open')
+    : !appShell.classList.contains('sidebar-collapsed');
+  sidebarToggle.setAttribute('aria-expanded', String(isExpanded));
+  sidebarToggle.setAttribute('aria-label', `${isExpanded ? 'Hide' : 'Show'} navigation`);
+  sidebarToggle.title = `${isExpanded ? 'Hide' : 'Show'} navigation`;
+}
+sidebarToggle.addEventListener('click', () => {
+  const isMobile = window.matchMedia('(max-width: 620px)').matches;
+  const className = isMobile ? 'mobile-nav-open' : 'sidebar-collapsed';
+  appShell.classList.toggle(className);
+  if (!isMobile) {
+    try {
+      window.localStorage.setItem('lockdown-sidebar-collapsed', String(appShell.classList.contains('sidebar-collapsed')));
+    } catch (_) {
+      // Keep the toggle usable if local storage is unavailable.
+    }
+  }
+  syncSidebarToggle();
+});
+window.matchMedia('(max-width: 620px)').addEventListener('change', syncSidebarToggle);
+try {
+  if (window.localStorage.getItem('lockdown-sidebar-collapsed') === 'true') appShell.classList.add('sidebar-collapsed');
+} catch (_) {
+  // Keep the default expanded layout if local storage is unavailable.
+}
+syncSidebarToggle();
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', (event) => {
   event.preventDefault();
   const navId = item.getAttribute('href').slice(1);
   setActiveTab(navId);
+  if (window.matchMedia('(max-width: 620px)').matches) {
+    appShell.classList.remove('mobile-nav-open');
+    syncSidebarToggle();
+  }
 }));
 setActiveTab('overview');
 const savedTheme = (() => {

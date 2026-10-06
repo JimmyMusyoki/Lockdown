@@ -7,7 +7,7 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar">
       <div class="brand">
         <div class="brand-mark"><img src="spacecraft.svg" alt="Lockdown spacecraft" /></div>
         <div>
@@ -66,7 +66,7 @@
           </div>
           <section class="panel pc-panel pc-apps-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon green">▦</div><div><h3>Installed apps</h3><p>Software registered for this Windows account or device.</p></div></div><div class="pc-app-actions"><input id="installed-app-search" type="search" placeholder="Search apps" aria-label="Search installed apps"><button id="refresh-installed-apps" class="secondary-button" type="button">Refresh list</button><button id="open-uninstaller" class="secondary-button" type="button">Uninstall apps</button></div></div><div id="installed-apps" class="installed-app-list"><span class="field-note">Loading installed apps...</span></div></section>
           <section class="panel pc-panel pc-files-panel"><div class="pc-section-head"><div class="panel-heading"><div class="panel-icon blue">▧</div><div><h3>File manager</h3><p>Browse and delete items inside a folder you choose.</p></div></div><button id="choose-pc-folder" class="connect-button" type="button">Choose folder</button></div><div id="pc-file-browser" class="pc-file-browser"><span class="field-note">Choose a folder to browse its files.</span></div></section>
-          <section class="panel pc-actions-panel"><div><div class="panel-heading"><div class="panel-icon orange">↻</div><div><h3>Maintenance</h3><p id="pc-update-message">Check Lockdown Blocker updates, open Windows Update, or restart this PC.</p></div></div><div class="pc-maintenance-actions"><button id="pc-check-updates" class="secondary-button" type="button">Check app updates</button><button id="pc-update-action" class="secondary-button hidden" type="button">Update app</button><button id="open-windows-update" class="secondary-button" type="button">Windows Update</button><button id="restart-pc" class="danger-button" type="button">Restart PC</button></div></div></section>
+          <section class="panel pc-actions-panel"><div><div class="panel-heading"><div class="panel-icon orange">↻</div><div><h3>Maintenance</h3><p id="pc-update-message">Update Lockdown Blocker, install available Windows updates, or restart this PC.</p></div></div><div class="pc-maintenance-actions"><button id="pc-check-updates" class="secondary-button" type="button">Check app updates</button><button id="pc-update-action" class="secondary-button hidden" type="button">Update app</button><button id="install-windows-updates" class="secondary-button" type="button">Install Windows updates</button><button id="restart-pc" class="danger-button" type="button">Restart PC</button></div></div></section>
         </section>
 
         <section class="summary-grid" aria-label="Blocking summary" data-tab-section="overview">
@@ -182,12 +182,12 @@
             <label class="select-all-control"><input id="select-all-saved" type="checkbox"> Select all PCs</label>
             <div class="group-action-buttons"><button id="focus-selected" class="secondary-button">Start focus lock</button><button id="block-websites-selected">Block websites</button><button id="block-apps-selected">Block applications</button><button id="shutdown-selected" class="danger-button">Shut down selected</button></div>
             <p class="lab-rule-note">Website and application actions use the lists configured in <button id="open-local-rules" type="button">Manage rules</button>.</p>
-          </div>
-          <div class="saved-device-tools" data-device-step="devices">
-            <span>Remote tools <small id="remote-tools-hint">Select one PC to continue</small></span>
-            <div class="saved-device-tool-buttons">
-              <button id="view-selected-screen" class="icon-action" type="button" title="View the selected PC's screen" aria-label="View the selected PC's screen" disabled>▣</button>
-              <button id="open-selected-file-sharing" class="icon-action" type="button" title="Send files to or download files from the selected PC" aria-label="Open file sharing for the selected PC" disabled>↔</button>
+            <div class="saved-device-tools" data-device-step="devices">
+              <span>Remote tools <small id="remote-tools-hint">Select one PC to continue</small></span>
+              <div class="saved-device-tool-buttons">
+                <button id="view-selected-screen" class="icon-action" type="button" title="View the selected PC's screen" aria-label="View the selected PC's screen" disabled><span class="screen-share-icon icon-glyph" aria-hidden="true"></span></button>
+                <button id="open-selected-file-sharing" class="icon-action" type="button" title="Send files to or download files from the selected PC" aria-label="Open file sharing for the selected PC" disabled><span class="file-share-icon icon-glyph" aria-hidden="true"></span></button>
+              </div>
             </div>
           </div>
           <div id="saved-pc-cards" class="saved-pc-cards" data-device-step="devices"><div class="empty-devices">Save a group to see its PCs here.</div></div>
