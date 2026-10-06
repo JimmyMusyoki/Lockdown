@@ -7,6 +7,8 @@ const frameTime = document.getElementById('frame-time');
 const screenImage = document.getElementById('screen-image');
 const screenMessage = document.getElementById('screen-message');
 const liveIndicator = document.querySelector('.live-indicator');
+const screenshotButton = document.getElementById('save-screenshot');
+const fullscreenButton = document.getElementById('fullscreen-view');
 let sessionId;
 let stopped = false;
 
@@ -24,10 +26,11 @@ async function captureNextFrame() {
     if (stopped) return;
     screenImage.src = `data:image/jpeg;base64,${frame.image}`;
     screenImage.classList.add('visible');
+    screenshotButton.disabled = false;
     screenMessage.classList.add('hidden');
     frameTime.textContent = new Date(frame.capturedAt).toLocaleTimeString();
     setStatus('Live screen · enabled on host', true);
-    setTimeout(captureNextFrame, 900);
+    setTimeout(captureNextFrame, 1200);
   } catch (error) {
     setStatus(error.message || 'Screen view ended');
     screenMessage.textContent = error.message || 'Screen view ended.';
@@ -69,6 +72,28 @@ async function stopScreenView() {
 }
 
 document.getElementById('stop-view').addEventListener('click', stopScreenView);
+screenshotButton.addEventListener('click', () => {
+  if (!screenImage.src || screenshotButton.disabled) return;
+  const safeName = screenName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\s+/g, '-');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const download = document.createElement('a');
+  download.href = screenImage.src;
+  download.download = `${safeName}-screenshot-${timestamp}.jpg`;
+  download.click();
+});
+fullscreenButton.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (error) {
+    setStatus(error.message || 'Could not change full-screen mode');
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  const fullscreen = Boolean(document.fullscreenElement);
+  fullscreenButton.title = fullscreen ? 'Exit full screen' : 'Enter full screen';
+  fullscreenButton.setAttribute('aria-label', fullscreen ? 'Exit full screen' : 'Enter full screen');
+});
 window.api.onRemoteScreenEnding(() => {
   stopped = true;
   setStatus('Remote PC is shutting down');

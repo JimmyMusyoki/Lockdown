@@ -42,6 +42,7 @@ let automaticUpdates = true;
 let pcFileRoot = null;
 const certificatePins = new Map();
 const REMOTE_REQUEST_TIMEOUT_MS = 8000;
+const remoteCommandHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 const WINDOWS_UPDATE_SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const windowsUpdateJobs = new Map();
 let windowsUpdateScanAt = 0;
@@ -100,6 +101,7 @@ async function remoteCommand(host, password, command, payload, role = 'operator'
       path: route,
       method,
       rejectUnauthorized: false,
+      agent: remoteCommandHttpsAgent,
       headers: body ? { 'Content-Type': 'application/json' } : {}
     }, (response) => {
       let text = '';
@@ -500,7 +502,7 @@ async function captureScreenFrame(sessionId) {
   const primaryDisplayId = String(screen.getPrimaryDisplay().id);
   const source = sources.find((item) => item.display_id === primaryDisplayId) || sources[0];
   if (!source || source.thumbnail.isEmpty()) throw new Error('No capturable display is available.');
-  return { image: source.thumbnail.toJPEG(58).toString('base64'), capturedAt: Date.now() };
+  return { image: source.thumbnail.toJPEG(48).toString('base64'), capturedAt: Date.now() };
 }
 
 function stopScreenView(sessionId) {

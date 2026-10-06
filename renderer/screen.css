@@ -9,11 +9,20 @@ body { display: flex; flex-direction: column; width: 100vw; height: 100vh; margi
 .live-indicator { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #dba04d; box-shadow: 0 0 0 4px #dba04d22; }
 .live-indicator.active { background: #5bc28b; box-shadow: 0 0 0 4px #5bc28b22; }
 .toolbar-actions { color: #a7b4aa; font-size: 11px; }
-button { width: 34px; height: 34px; border: 1px solid #465149; border-radius: 5px; color: #eff4f0; background: #252e28; font-size: 22px; line-height: 1; cursor: pointer; }
-button:hover { border-color: #da8b72; color: #ffc6b5; background: #392823; }
-.screen-stage { position: relative; display: grid; flex: 1; min-height: 0; place-items: center; padding: 18px; background: radial-gradient(ellipse at center, #26312a 0, #111614 72%); }
-.screen-stage img { display: none; max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 12px 45px #0008; }
+button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #465149; border-radius: 5px; color: #eff4f0; background: #252e28; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #70c898; color: #91e2b3; background: #26382e; }
+button:disabled { cursor: not-allowed; opacity: .4; }
+.camera-icon, .fullscreen-icon, .stop-icon { display: block; width: 17px; height: 17px; background: currentColor; mask-position: center; mask-repeat: no-repeat; mask-size: contain; }
+.camera-icon { mask-image: url('../node_modules/lucide-static/icons/camera.svg'); }
+.fullscreen-icon { mask-image: url('../node_modules/lucide-static/icons/maximize.svg'); }
+.stop-icon { mask-image: url('../node_modules/lucide-static/icons/x.svg'); }
+.screen-stage { position: relative; display: grid; flex: 1; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; padding: 0; background: #111614; }
+.screen-stage img { display: none; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; }
 .screen-stage img.visible { display: block; }
 #screen-message { max-width: min(480px, 90%); color: #c0cbc3; font-size: 13px; line-height: 1.6; text-align: center; }
 #screen-message.hidden { display: none; }
-@media (max-width: 520px) { .toolbar { flex-basis: 56px; padding: 0 11px; }.screen-stage { padding: 8px; }.target { gap: 8px; }.target strong { max-width: 48vw; } }
+html:fullscreen { width: 100%; height: 100%; background: #111614; }
+html:fullscreen body { display: block; width: 100%; height: 100%; }
+html:fullscreen .toolbar { position: fixed; inset: 0 0 auto; z-index: 5; background: #1a211de8; }
+html:fullscreen .screen-stage { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; }
+@media (max-width: 520px) { .toolbar { flex-basis: 56px; padding: 0 11px; }.target { gap: 8px; }.target strong { max-width: 48vw; } }
