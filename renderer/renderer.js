@@ -580,13 +580,17 @@ async function restartSavedPcs(devices) {
     ? `Restart ${devices[0].name || devices[0].ip}? Save your work first.`
     : `Restart all ${devices.length} selected PCs? Save work on each PC first.`;
   if (!confirm(message)) return;
-  const results = await Promise.allSettled(devices.map((device) => isCurrentDevice(device)
-    ? window.api.restartPc(true)
-    : window.api.remoteCommand(`${device.ip}:47821`, agentSessionPassword(), 'restart', null, 'admin')));
+  const remoteDevices = devices.filter((device) => !isCurrentDevice(device));
+  const localDevices = devices.filter(isCurrentDevice);
+  const remoteResults = await Promise.allSettled(remoteDevices.map((device) =>
+    window.api.remoteCommand(`${device.ip}:47821`, agentSessionPassword(), 'restart', null, 'admin')));
+  const localResults = await Promise.allSettled(localDevices.map(() => window.api.restartPc(true)));
+  const results = [...remoteResults, ...localResults];
+  const orderedDevices = [...remoteDevices, ...localDevices];
   const success = results.filter((result) => result.status === 'fulfilled').length;
   const failureIndex = results.findIndex((result) => result.status === 'rejected');
   const failure = failureIndex >= 0 ? results[failureIndex].reason : null;
-  const failedDevice = failureIndex >= 0 ? devices[failureIndex] : null;
+  const failedDevice = failureIndex >= 0 ? orderedDevices[failureIndex] : null;
   showToast(success
     ? `Restart scheduled on ${success}/${devices.length} PC${devices.length === 1 ? '' : 's'}${failure ? `; ${remoteFailureMessage(failure, failedDevice)}` : ''}`
     : remoteFailureMessage(failure, failedDevice));

@@ -1049,7 +1049,7 @@ ipcMain.handle('restart-pc', async (_evt, confirmed = false) => {
     });
     if (confirmation.response !== 0) return false;
   }
-  spawnSync('shutdown.exe', ['/r', '/t', '0'], { windowsHide: true });
+  spawnSync('shutdown.exe', ['/r', '/t', confirmed ? '10' : '0'], { windowsHide: true });
   return true;
 });
 

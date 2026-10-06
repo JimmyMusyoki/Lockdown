@@ -86,6 +86,7 @@ button, input, textarea { font: inherit; }
 .compact-toggle { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--ink); font-size: 10px; }
 .compact-toggle input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); }
 .theme-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
