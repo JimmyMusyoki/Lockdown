@@ -1,0 +1,65 @@
+LOCKDOWN BLOCKER TERMS OF USE
+
+Please read these terms before installing or using Lockdown Blocker. You must
+accept them in the installer to continue.
+
+1. Permission to use
+
+Lockdown Blocker is provided under the MIT License. These terms explain
+important responsibilities and risks associated with using the application;
+they do not replace the MIT License or grant rights to third-party software.
+
+2. Administrator access and system changes
+
+The Windows installer and application require administrator privileges for
+some features. Lockdown Blocker can change the Windows hosts file, terminate
+selected processes, create a boot-time background agent that runs as SYSTEM,
+and enable the Windows Network Discovery firewall rules for the private
+network profile. These actions can affect all accounts on the computer,
+network access, and other applications. Review each permission prompt and
+only install on a computer you are authorized to administer.
+
+3. Restrictions and lock timer
+
+Website and application restrictions may prevent access to sites or stop
+programs while active. The application is not guaranteed to prevent every
+bypass, preserve every restriction, or work with every system configuration.
+You are responsible for understanding the effects of a restriction before
+starting it and for maintaining access to your computer.
+
+4. Network and remote-management features
+
+When enabled, the LAN agent lets other Lockdown Blocker installations on
+your local network send management commands. Screen viewing and file sharing
+do not require a prompt on the target computer. Use these features only on a
+trusted network, protect access to your computers, and connect only computers
+you own or are explicitly authorized to manage, view, or exchange files with.
+You are responsible for obtaining any required notice or consent from other
+users.
+
+5. Data and updates
+
+Settings and operational data are stored on the computer, including shared
+rules and certificates used by the background agent. LAN management requests
+may be recorded with the sender's internal network address. Packaged builds
+check GitHub Releases for application updates when update checks are enabled.
+Do not use the application to access, monitor, or share data without
+authorization.
+
+6. Your responsibilities
+
+You are responsible for complying with applicable laws and policies, making
+backups of important data, and checking the effects of the application on
+your system and network. Do not rely on Lockdown Blocker as a security
+product, parental-control guarantee, or substitute for supervision.
+
+7. Disclaimer
+
+To the extent permitted by applicable law, Lockdown Blocker is provided
+"AS IS", without warranties or guarantees of any kind. The authors and
+contributors are not liable for loss, damage, interruption, blocked access,
+or other consequences arising from installation or use, except where
+applicable law does not permit such exclusion or limitation.
+
+By selecting acceptance in the installer, you confirm that you have read and
+agree to these terms.

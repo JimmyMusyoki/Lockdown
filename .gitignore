@@ -6,4 +6,5 @@ dist-sync2/
 !build/
 build/*
 !build/installer.nsh
+!build/terms-of-use.txt
 *.log
