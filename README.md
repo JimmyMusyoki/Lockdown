@@ -51,7 +51,7 @@ The installed build creates a Windows Task Scheduler task named **Lockdown Block
 ```bash
 npm run dist
 ```
-This uses `electron-builder` to produce an NSIS installer in `dist/`. The installer will prompt for admin rights on launch, matching Cold Turkey's behavior.
+This uses `electron-builder` to produce an NSIS installer in `dist/`. The installer displays the Lockdown Blocker Terms of Use and requires acceptance before installation can continue. It will also prompt for admin rights on launch, matching Cold Turkey's behavior.
 
 ## Production Updates
 

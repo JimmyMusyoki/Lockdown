@@ -34,6 +34,7 @@
     },
     "nsis": {
       "include": "build/installer.nsh",
+      "license": "build/terms-of-use.txt",
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
